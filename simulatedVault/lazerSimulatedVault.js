@@ -1,7 +1,7 @@
 /*
 Objective: to test and validate rebalancing strategies to minimize borrowing costs.
 
-A Vault, in the end, proves the user with a certain interest rate.
+A Vault, in the end, provides the user with a certain interest rate.
 
 To get the poolAddress, go to https://defillama.com/docs/api => pools or get request https://yields.llama.fi/pools
 
@@ -16,9 +16,9 @@ let borrowedAsset = 'USDC';
 let chains = ['Mainnet', 'Polygon', 'Arbitrum', 'Optimism'];
 // let allowedLendingProviders = ['AaveV2', 'CompoundV2'];
 
-// let allowedLendingProviders = ['AaveV2', 'AaveV3', 'CompoundV2', 'CompoundV3', 
-//                             'Euler', 'Notional', 'Morpho', 'Sturdy Finance', 
-//                             'Radiant', '0vix', 'Hundred', 'Iron Bank', 
+// let allowedLendingProviders = ['AaveV2', 'AaveV3', 'CompoundV2', 'CompoundV3',
+//                             'Euler', 'Notional', 'Morpho', 'Sturdy Finance',
+//                             'Radiant', '0vix', 'Hundred', 'Iron Bank',
 //                             'dForce', 'WePiggy', 'Midas', 'Wing'];
 
 let pools = {
@@ -76,70 +76,62 @@ class supplyInterestRates {
     getHistoricData(poolAddress) {
         let url = `https://yields.llama.fi/chartLendBorrow/${poolAddress}`;
         let response = axios.get(url);
-        
+
         return response;
     }
 }
 
-class rebalanceStrategy {
-    constructor(borroowingVault, supplyInterestRates) {
-        this.borroowingVault = borroowingVault;
-        this.supplyInterestRates = supplyInterestRates;
-        this.lastRebalnceDate = new Date();
-        this.rebalanceFrequency = 24; // in hours
-    }
-
-    // method to sort interest rates 
-
-    // method to decide rebalancing strategy: 0.5%
-    
-}
-
-class simulatedVault {
-    constructor(collateralAsset, collateralAmount, debtAsset, debtAmount) {
-        this.collateralAsset = collateralAsset;
-        this.collateralAmount = collateralAmount;
-        this.debtAsset = debtAsset;
-        this.debtAmount = debtAmount;
-        this.lendingProviders = ['aavev2', 'compound'];
-        this.apyHistory = {};
-        this.providerDistribution = {};
-    }
-
-    // // The borrow rate a user gets from the vault is the weighted average of the borrow rates of the providers
-    // get userBorrowrate() {
-    //     return this.calcAvgBorrowRate();
-    // }
-
-    calcAvgBorrowRate(data) {
-        let avgBorrowRate = 0;
-
-        // loop through the lending providers
-        for (let i = 0; i < this.lendingProviders.length; i++) {
-            let provider = this.lendingProviders[i];
-            avgBorrowRate += data['activeProvider'][provider] * data['activeApy'][provider];
-        }
-
-        return avgBorrowRate;
+// not being used
+rebalanceStrategy = (borroowingVault, supplyInterestRates) => {
+    obj = {
+        borroowingVault : borroowingVault,
+        supplyInterestRates : supplyInterestRates,
+        lastRebalnceDate : new Date(),
+        rebalanceFrequency : 24 // in hours
     }
 }
 
+simulatedVault = (collateralAsset, collateralAmount, debtAsset, debtAmount) => {
+    return {
+        collateralAsset : collateralAsset,
+        collateralAmount : collateralAmount,
+        debtAsset : debtAsset,
+        debtAmount : debtAmount,
+        lendingProviders : ['aavev2', 'compound'],
+        apyHistory : {},
+        providerDistribution : {}
+    }
+}
+
+calcAvgBorrowRate = (vault,data) => {
+    let avgBorrowRate = 0;
+
+    // loop through the lending providers
+    for (let i = 0; i < vault.lendingProviders.length; i++) {
+        let provider = vault.lendingProviders[i];
+        avgBorrowRate += data['activeProvider'][provider] * data['activeApy'][provider];
+    }
+
+    return avgBorrowRate;
+}
+
+
+
+//-----//
+// Main
 let ir = new supplyInterestRates(collateralAsset, borrowedAsset);
 
-let borrowingVault = new simulatedVault(collateralAsset = collateralAsset, 
-                                        collateralAmount = 1000, 
-                                        debtAsset = borrowedAsset, 
-                                        debtAmount = 4e5);
+let borrowingVault =  simulatedVault(collateralAsset,
+                                        1000,
+                                         borrowedAsset,
+                                         4e5);
 
 let lendingProvider1 = 'aavev2';
 let lendingProvider2 = 'compound';
 
-(async function(){
 
-    // for (provider in lendingProviders) {
-    //     let providerData = await ir.getHistoricData(pools[ir.borrowedAsset][provider]);
-    //     providerData = ir.formatApiRequest(providerData.data.data);
-    // }
+// Main IIFE
+(async function(){
 
     let aavev2Data = await ir.getHistoricData(pools[ir.borrowedAsset][lendingProvider1]);
     let compoundData = await ir.getHistoricData(pools[ir.borrowedAsset][lendingProvider2]);
@@ -149,17 +141,21 @@ let lendingProvider2 = 'compound';
 
     // main
     let borrowAPYs = {};
-    
+
     for (let i = 0; i < aavev2Data.length; i++) {
+        // skip empty fields
+        if (!compoundData[i]) {
+            continue
+        }
+
         if ( ir.isSameDay(aavev2Data[i].timestamp, compoundData[i].timestamp) ) {
-            
             let date = ir.timestampToDate(aavev2Data[i].timestamp);
             borrowAPYs[date] = {};
             borrowAPYs[date][lendingProvider1] = aavev2Data[i].apyBaseBorrow;
             borrowAPYs[date][lendingProvider2] = compoundData[i].apyBaseBorrow;
         }
     }
-    
+
     borrowingVault.providerDistribution[lendingProvider1] = 0;
     borrowingVault.providerDistribution[lendingProvider2] = 0;
 
@@ -182,7 +178,7 @@ let lendingProvider2 = 'compound';
         };
     }
 
-    /* 
+    /*
         Calculate the total interest paid by the vault
     */
 
@@ -195,15 +191,15 @@ let lendingProvider2 = 'compound';
         currentDate = new Date(date);
         if (currentDate <= endDate) {
             totalDayCount += 1;
-            accumulatedInterest += borrowingVault.calcAvgBorrowRate(borrowingVault.apyHistory[date]) / 100;
+            accumulatedInterest += calcAvgBorrowRate(borrowingVault,borrowingVault.apyHistory[date]) / 100;
         }
     }
 
     let totalInterestPaid = borrowingVault.debtAmount * accumulatedInterest / 365;
 
-    console.log('The borrowing vault rebalanced', borrowingVault.debtAmount, 
+    console.log('The borrowing vault rebalanced', borrowingVault.debtAmount,
                 borrowingVault.debtAsset, 'for', totalDayCount, 'days');
-    console.log('Total interest paid ', totalInterestPaid, debtAsset);
+    console.log('Total interest paid ', totalInterestPaid, borrowingVault.debtAsset);
 
     /*
     - how much total interest paid with rebalancing
@@ -212,3 +208,4 @@ let lendingProvider2 = 'compound';
     */
 
 })();
+
