@@ -1,5 +1,5 @@
 /*
-    Benchmark calculation of total interest a user pays for using the Aave V2 as lending provider. 
+    Benchmark calculation of total interest a user pays for using the Aave V2 as lending provider.
     It uses the Aave-V2 Data API as data source directly, this will help to compare the result of useing other data sources.
 
     Borrowed amount: small amount so we don't need to model interest rate slippage
@@ -13,11 +13,11 @@
 
 const axios = require('axios');
 
-const borrowedAmount = 10000;
+const borrowedAmount = 400000;
 const debtAsset = 'USDC';
 
 const startDate = new Date("Sep-19-2022 00:54:11 UTC");
-const endDate = new Date("Nov-17-2022 06:27:47 UTC");
+const endDate = new Date("Mar-10-2023 06:27:47 UTC");
 
 const DAIaddr = "0x6b175474e89094c44da98b954eedeac495271d0f";
 const USDCaddr = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
@@ -65,8 +65,8 @@ function calculateTotalInterest(queryResult) {
 
     console.log("Borrowed on:", startDate);
     console.log("Payback on:", endDate);
-    
-    console.log('Total interest paid on borrowing', borrowedAmount, debtAsset, 'for', totalDays, 
+
+    console.log('Total interest paid on borrowing', borrowedAmount, debtAsset, 'for', totalDays,
                 'days with variable rate:', borrowedAmount*totalInterest, debtAsset);
 }
 

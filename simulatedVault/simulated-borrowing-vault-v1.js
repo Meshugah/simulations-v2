@@ -12,7 +12,7 @@ Counpound slippage model: https://app.compound.finance/markets?market=1_USDC_0xc
 
 // sychronise all api date to the first where every protocol has ab apy
 // inititalise vault: put all in the lowerst rate lending provider
-// 
+//
 
 const axios = require('axios');
 
@@ -23,9 +23,9 @@ let lendingProviders = ['aavev2', 'compound'];
 let chains = ['Mainnet', 'Polygon', 'Arbitrum', 'Optimism'];
 // let allowedLendingProviders = ['AaveV2', 'CompoundV2'];
 
-// let allowedLendingProviders = ['aavev2', 'AaveV3', 'Compound-v2', 'Compound-v3', 
-//                             'euler', 'Notional', 'Morpho', 'Sturdy Finance', 
-//                             'Radiant', '0vix', 'Hundred', 'Iron Bank', 
+// let allowedLendingProviders = ['aavev2', 'AaveV3', 'Compound-v2', 'Compound-v3',
+//                             'euler', 'Notional', 'Morpho', 'Sturdy Finance',
+//                             'Radiant', '0vix', 'Hundred', 'Iron Bank',
 //                             'dForce', 'WePiggy', 'Midas', 'Wing'];
 
 class supplyInterestRates {
@@ -91,7 +91,7 @@ class supplyInterestRates {
         let url = `https://yields.llama.fi/chartLendBorrow/${poolAddress}`;
         let response = await axios.get(url);
         response = this.formatApiRequest(response.data.data);
-        
+
         return response;
     }
 
@@ -119,36 +119,36 @@ class supplyInterestRates {
         for (let i=0; i<this.lendingProviders.length; i++) {
             let provider = this.lendingProviders[i];
             let providerData = await this.getHistoricData(this.pools[this.borrowedAsset][provider]);
-    
+
             allProviderData[provider] = providerData;
-    
+
             let firstDate = this.timestampToDate(providerData[0]['timestamp']);
             firstDateArray.push(firstDate);
         }
-        
+
         this.firstCommonDate = new Date(Math.max.apply(null, firstDateArray));
         allProviderData = this.syncProviderData(allProviderData);
-        
+
         return allProviderData
     }
 
     async formatProviderData(allProviderData) {
         let formattedData = {};
-    
+
         for (let i = 0; i < allProviderData[this.lendingProviders[0]].length; i++) {
             let date = ir.timestampToDate(allProviderData[this.lendingProviders[0]][i].timestamp);
             formattedData[date] = {};
 
             for (let j = 0; j < this.lendingProviders.length; j++) {
                 let lendingProvider = this.lendingProviders[j];
-                
-                formattedData[date][lendingProvider] = {};
 
+                console.log('meme')
+                if(!formattedData[date][lendingProvider]) continue
                 formattedData[date][lendingProvider]['apyBaseBorrow'] = allProviderData[lendingProvider][i].apyBaseBorrow;
                 formattedData[date][lendingProvider]['totalBorrowUsd'] = allProviderData[lendingProvider][i].totalBorrowUsd;
             }
         }
-        
+
         return formattedData;
     }
 }
@@ -161,9 +161,9 @@ class simulaterebalancing {
 
     logResults(date,
                 apys,
-                maxSlippage, 
-                totalBorrowUsd, 
-                maxTransferAmount, 
+                maxSlippage,
+                totalBorrowUsd,
+                maxTransferAmount,
                 amountToTransfer,
                 distr) {
         console.log();
@@ -179,10 +179,10 @@ class simulaterebalancing {
         console.log();
     }
 
-    // method to sort interest rates 
+    // method to sort interest rates
 
     // method to decide rebalancing strategy: 0.5%
-    
+
 }
 
 class simulatedVault {
@@ -260,13 +260,13 @@ class simulatedVault {
 
         console.log('Transfer', transferAmount, 'from', fromProvider, 'to', toProvider);
     }
-    
+
     initialize() {
         // initialize when vault is too big to to be distributed because of slippage.
         // currently not needed with 4e5 debtAmount
         for (let i = 0; i < this.lendingProviders.length; i++) {
             let provider = this.lendingProviders[i];
-            
+
         }
     }
 }
@@ -309,7 +309,7 @@ async function simRebalance() {
                 let maxTransferAmount = borrowingVault.maxTransferAmount(
                     min['totalBorrowUsd'],
                     maxSlippage);
-                
+
                 if (borrowingVault.providerDistrTotal() != 0 && borrowingVault.providerDistribution[provider] != 0) {
                     amountToTransfer *= borrowingVault.providerDistribution[provider];
                 }
@@ -325,18 +325,22 @@ async function simRebalance() {
         }
 
         // TODO get price to convert the debt asset to USD - okay now becasue we use USDC
-        
+
         borrowingVault.apyHistory[date] = {
             'activeProvider': borrowingVault.providerDistribution,
             'activeApy': {}
         };
         for (let i = 0; i < borrowingVault.lendingProviders.length; i++) {
             let provider = borrowingVault.lendingProviders[i];
+            if(!borrowAPYs[date][provider]){
+                console.log('meme2')
+                continue
+            }
             borrowingVault.apyHistory[date]['activeApy'][provider] = borrowAPYs[date][provider]['apyBaseBorrow'];
         }
     }
 
-    /* 
+    /*
         Calculate the total interest paid by the vault
     */
 
@@ -355,7 +359,7 @@ async function simRebalance() {
 
     let totalInterestPaid = borrowingVault.debtAmount * accumulatedInterest / 365;
 
-    console.log('The borrowing vault rebalanced', borrowingVault.debtAmount, 
+    console.log('The borrowing vault rebalanced', borrowingVault.debtAmount,
                 borrowingVault.debtAsset, 'for', totalDayCount, 'days');
     console.log('Total interest paid ', totalInterestPaid, borrowingVault.debtAsset);
 

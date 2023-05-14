@@ -26,8 +26,14 @@ let pools = {
         'aavev2': 'a349fea4-d780-4e16-973e-70ca9b606db2',
         'compound': 'cefa9bb8-c230-459a-a855-3b94e96acd8c',
         'euler': '61b7623c-9ac2-4a73-a748-8db0b1c8c5bc',
+        'venus': '9f3a6015-5045-4471-ba65-ad3dc7c38269' // bsc
     }
 };
+
+timestampToDate = (timestamp) => {
+    let date = new Date(timestamp.split('T')[0]);
+    return date;
+}
 
 class supplyInterestRates {
     constructor(collateralAsset, borrowedAsset) {
@@ -52,18 +58,26 @@ class supplyInterestRates {
         return formattedData;
     }
 
-    timestampToDate(timestamp) {
-        let date = new Date(timestamp.split('T')[0]);
-        return date;
-    }
 
-    isSameDay(timestamp1, timestamp2) {
-        let date1 = this.timestampToDate(timestamp1);
-        let date2 = this.timestampToDate(timestamp2);
 
-        return date1.getFullYear() === date2.getFullYear() &&
+    isSameDay(timestamp1, timestamp2, timestamp3) {
+        console.log(timestamp2)
+        console.log(timestamp1)
+
+
+
+        let date1 = timestampToDate(timestamp1);
+        let date2 = timestampToDate(timestamp2);
+
+
+        console.log(date1.getFullYear() === date2.getFullYear() &&
             date1.getMonth() === date2.getMonth() &&
-            date1.getDate() === date2.getDate();
+            date1.getDate() === date2.getDate())
+
+        return {
+            sameDay: date1.getFullYear() === date2.getFullYear() &&
+            date1.getMonth() === date2.getMonth() &&
+            date1.getDate() === date2.getDate()}
     }
 
     getLiveData() {
@@ -74,6 +88,7 @@ class supplyInterestRates {
     }
 
     getHistoricData(poolAddress) {
+        console.log('getting historic data for pool from defillama: ' + poolAddress)
         let url = `https://yields.llama.fi/chartLendBorrow/${poolAddress}`;
         let response = axios.get(url);
 
@@ -128,42 +143,86 @@ let borrowingVault =  simulatedVault(collateralAsset,
 
 let lendingProvider1 = 'aavev2';
 let lendingProvider2 = 'compound';
+let lendingProvider3 = 'euler';
+let lendingProvider4 = 'venus';
+
 
 
 // Main IIFE
 (async function(){
 
-    let aavev2Data = await ir.getHistoricData(pools[ir.borrowedAsset][lendingProvider1]);
-    let compoundData = await ir.getHistoricData(pools[ir.borrowedAsset][lendingProvider2]);
+    let aavev2DataHistoric = await ir.getHistoricData(pools[ir.borrowedAsset][lendingProvider1]);
+    let compoundDataHistoric = await ir.getHistoricData(pools[ir.borrowedAsset][lendingProvider2]);
+    let eulerData = await ir.getHistoricData(pools[ir.borrowedAsset][lendingProvider3]);
+    let venusData = await ir.getHistoricData(pools[ir.borrowedAsset][lendingProvider4]);
 
-    aavev2Data = ir.formatApiRequest(aavev2Data.data.data);
-    compoundData = ir.formatApiRequest(compoundData.data.data);
+
+
+    aavev2Data = ir.formatApiRequest(compoundDataHis.data.data);
+    compoundData = ir.formatApiRequest(aavev2DataHistoric.data.data);
+    eulerData = ir.formatApiRequest(eulerData.data.data);
+
+
+
+
 
     // main
     let borrowAPYs = {};
 
-    for (let i = 0; i < aavev2Data.length; i++) {
+    // loops through the 'aave data length' todo change that to the longest length param instead
+    for (let i = 0,j = 0; i < aavev2Data.length, j < compoundData.length; i++, j++) {
         // skip empty fields
         if (!compoundData[i]) {
+            console.log('empty data')
             continue
         }
 
-        if ( ir.isSameDay(aavev2Data[i].timestamp, compoundData[i].timestamp) ) {
-            let date = ir.timestampToDate(aavev2Data[i].timestamp);
-            borrowAPYs[date] = {};
-            borrowAPYs[date][lendingProvider1] = aavev2Data[i].apyBaseBorrow;
-            borrowAPYs[date][lendingProvider2] = compoundData[i].apyBaseBorrow;
+        // checks if the days match
+        // todo pointers
+        const {sameDay} = ir.isSameDay(aavev2Data[i].timestamp, compoundData[j].timestamp)
+
+        // set the key with the respective timestamp, in this case the highest, as it may lag
+        let date1 = this.timestampToDate(aavev2Data[i].timestamp);
+        let date2 = this.timestampToDate(compoundData[j].timestamp);
+
+        let keyDate
+        if (date1.getDate() >= date2.getDate()) keyDate = timestampToDate(aavev2Data[i].timestamp)
+        else if (date2.getDate() <= date1.getDate()) keyDate = timestampToDate(compoundData[j].timestamp)
+
+
+
+        if(!sameDay){
+            console.log(date1.getDate(), date2.getDate())
+            if(date1.getDate() >= date2.getDate()) {
+                i--
+            }
+            if(date1.getDate() <= date2.getDate()) {
+                j--
+            }
+
         }
+
+        else if (sameDay) {
+            borrowAPYs[keyDate] = {};
+            borrowAPYs[keyDate][lendingProvider1] = aavev2Data[i].apyBaseBorrow;
+            borrowAPYs[keyDate][lendingProvider2] = compoundData[i].apyBaseBorrow;
+        }
+        else (console.log('we missed one!')
+        )
     }
 
     borrowingVault.providerDistribution[lendingProvider1] = 0;
     borrowingVault.providerDistribution[lendingProvider2] = 0;
 
     for (let date in borrowAPYs) {
-        console.log();
-        console.log(date);
-        console.log(borrowAPYs[date]);
 
+        // todo show that moving it is actually a good decision
+        // not a binary move, greedy
+        // yield maximization, backtest
+        // no threshold
+
+        // console.log(borrowAPYs[date][lendingProvider1])
+        console.log(borrowAPYs[date][lendingProvider2])
         if ( (borrowAPYs[date][lendingProvider1] < borrowAPYs[date][lendingProvider2] - 0.5) && (borrowingVault.providerDistribution[lendingProvider1] != 1) ) {
             borrowingVault.providerDistribution[lendingProvider1] = 1;
             borrowingVault.providerDistribution[lendingProvider2] = 0;
@@ -209,3 +268,5 @@ let lendingProvider2 = 'compound';
 
 })();
 
+// todo vignesh
+//  add utilization rate to the date streamed in
