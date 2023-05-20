@@ -77,4 +77,5 @@ The API simulates the total interest paid by a user, over a period from startDat
 
 See instructions in directory to host on Google Cloud or locally to modify.
 
+![](./../backtest/Screenshot%202023-05-18%20at%202.27.24%20PM.png)
 
