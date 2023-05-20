@@ -47,7 +47,7 @@ class supplyInterestRates {
             let formattedDataPoint = {};
 
             if (data[i]['apyBaseBorrow'] == null) {
-                console.log('apyBaseBorrow was null for ' + protocolName)
+                // console.log('apyBaseBorrow was null for ' + protocolName)
                 continue;
             }
 
@@ -132,7 +132,7 @@ let ir = new supplyInterestRates(collateralAsset, borrowedAsset);
 let borrowingVault =  simulatedVault(collateralAsset,
                                         1000,
                                          borrowedAsset,
-                                         4e5);
+                                         400000);
 
 let lendingProvider1 = 'aavev2';
 let lendingProvider2 = 'compound';
@@ -168,11 +168,11 @@ let lendingProvider4 = 'venus';
     // main
     let borrowAPYs = {};
 
-    // loops through the 'aave data length' todo change that to the longest length param instead
+    // loops through the 'aave data length'
     for (let i = 0,j = 0; i < aavev2Data.length, j < compoundData.length; i++, j++) {
         // skip empty fields
         if (!compoundData[i]) {
-            console.log('empty data')
+            // console.log('empty data')
             continue
         }
         // if (!aavev2Data[i]) {
@@ -219,11 +219,6 @@ let lendingProvider4 = 'venus';
 
     for (let date in borrowAPYs) {
 
-        // todo show that moving it is actually a good decision
-        // not a binary move, greedy
-        // yield maximization, backtest
-        // no threshold
-
         if ( (borrowAPYs[date][lendingProvider1] < borrowAPYs[date][lendingProvider2] - 0.5) && (borrowingVault.providerDistribution[lendingProvider1] != 1) ) {
             borrowingVault.providerDistribution[lendingProvider1] = 1;
             borrowingVault.providerDistribution[lendingProvider2] = 0;
@@ -257,6 +252,7 @@ let lendingProvider4 = 'venus';
 
     let totalInterestPaid = borrowingVault.debtAmount * accumulatedInterest / 365;
 
+    console.log(borrowingVault)
     console.log('The borrowing vault rebalanced', borrowingVault.debtAmount,
                 borrowingVault.debtAsset, 'for', totalDayCount, 'days');
     console.log('Total interest paid', totalInterestPaid, borrowingVault.debtAsset);
@@ -269,7 +265,68 @@ let lendingProvider4 = 'venus';
 
 })();
 
-// todo vignesh
-//  add utilization rate to the date streamed in
+// okay so what do i have now, and what do i need.
 
-// todo vignesh find what that extra param is
+
+// okay so the basic premise is simple, based on daily apr, sort descending order,
+
+// now that we have that for all the protocols
+
+// Allocate capital so that the higher protocol's apr comes down to the lower one.
+
+// with that i should get a lower yield and split the capital allocated
+
+// i would need to calculate the return on the amount, which should be the return on the lowest yield curve
+
+// lets go with 1.8% apr. now calculate the amount of yield generated, using the apr formula(double check this quick in the video) and then calculate that
+
+// now with that calculated, you can add that back to the principal, repeat the rebalancing bit every day, calculate yield and then keep doing that to the point that you get some amount of money back and subtract principal and show current yield
+
+// i think what i don't know is calculating the yield. if i calculate the yield, and add it back, can i use the utilization from the api, or do i use mine.
+
+// i think, basically, since its supply that i add to, borrow not going up is actually only good for us, as utilization can only go up and as such apr would go up as well.
+
+// the only calculatable field is apr calculation.
+
+// can i use the same api values and why is that. I can use values from the api continuously because its apy base that i need.
+
+// if i deposit capital into something and get the current rate, that's awesome because i can affect current impact. but for the next scenario, i can just take in market supply, add on our own supply plus interest, and taht becomes the new supply, so why is utilization rate important
+
+// oh i think apr is based on utilization rate
+
+
+
+
+
+
+
+
+
+
+// -----
+// {
+//     pool: "0x3ed3b47dd13ec9a98b44e6204a523e766b225811-ethereum", // unique identifier for the pool in the form of: `${ReceivedTokenAddress}-${chain}`.toLowerCase()
+//     chain: "Ethereum", // chain where the pool is (needs to match the `name` field in here https://api.llama.fi/chains)
+//     project: 'aave', // protocol (using the slug again)
+//     symbol: "USDT", // symbol of the tokens in pool, can be a single symbol if pool is single-sided or multiple symbols (eg: USDT-ETH) if it's an LP
+//     tvlUsd: 1000.1, // number representing current USD TVL in pool
+//     apyBase: 0.5, // APY from pool fees/supplying in %
+//     apyReward: 0.7, // APY from pool LM rewards in %
+//     rewardTokens: ['0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9'], // Array of reward token addresses (you can omit this field if a pool doesn't have rewards)
+//     underlyingTokens: ['0xdAC17F958D2ee523a2206206994597C13D831ec7'], // Array of underlying token addresses from a pool, eg here USDT address on ethereum
+//     poolMeta: "V3 market", // A string value which can stand for any specific details of a pool position, market, fee tier, lock duration, specific strategy etc
+//   };
+
+
+
+// ----
+// aaveCap + compoundCap = total capital
+
+// rt = r0 + Ut/U0 * rslope1
+// rt, usdc, aave = 1 + (borrow/supply)/0.9 * 0.07
+
+
+
+
+
+
