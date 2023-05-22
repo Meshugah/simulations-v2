@@ -9,8 +9,34 @@ let pools = {
     }
 };
 
-// only store fields, timestamp, apyBaseBorrow, totalSupplyUsd, totalBorrowUsd, protocol name, utilisation rate
-formatApiRequest = (data, protocolName) => {
+// calculateApy variable, type may be calculate to calculate apy, balance to see if a certain amount of capital can bring it down.
+calculateApyVariable = (protocol, type = 'default', obj) => {
+    // hardcoded values for usdc
+    baseAPY = 0
+    Rslope1 = 0.04
+    Uoptimal = 0.9
+
+    // switch between this function types possible utilisation rates
+    utilisationRate = 0
+    switch (type) {
+        case 'default':
+            utilisationRate = protocol.utilisationRate
+            break
+        case 'balance':
+            utilisationRate = protocol.totalBorrowUsd/(protocol.totalSupplyUsd + obj.amount)
+            break
+    }
+// 0.35550774565144816
+
+
+    if(utilisationRate>0.9) console.log('meme')
+    // calculation for under optimal utilisation
+    rate = (baseAPY + utilisationRate*0.04) * 100
+    return rate
+}
+
+// only store fields, timestamp, apyBase, totalSupplyUsd, totalBorrowUsd, protocol name, utilisation rate
+formatApiRequest = (data, protocolName, assetName) => {
     let formattedData = [];
     for (let i = 0; i < data.length; i++) {
         let formattedDataPoint = {};
@@ -21,11 +47,13 @@ formatApiRequest = (data, protocolName) => {
         }
 
         formattedDataPoint['timestamp'] = data[i].timestamp;
-        formattedDataPoint['apyBaseBorrow'] = data[i].apyBaseBorrow; // todo vignesh change this to supply
+        formattedDataPoint['apyBase'] = data[i].apyBase;
         formattedDataPoint['utilisationRate'] = data[i].totalBorrowUsd / data[i].totalSupplyUsd
         formattedDataPoint['totalBorrowUsd'] = data[i].totalBorrowUsd
         formattedDataPoint['totalSupplyUsd']  = data[i].totalSupplyUsd
         formattedDataPoint['protocolName'] = protocolName
+        formattedDataPoint['assetName'] = assetName;
+
 
         formattedData.push(formattedDataPoint);
     }
@@ -62,8 +90,11 @@ getHistoricData = (poolAddress) => {
     protocol2File = require('./compoundData')
 
     // format data into only categories we require
-    protocol1 = formatApiRequest(protocol1File.data, 'aave');
-    protocol2 = formatApiRequest(protocol2File.data, 'compound');
+    protocol1 = formatApiRequest(protocol1File.data, 'aave', 'usdc'); // todo change to accept pools
+    protocol2 = formatApiRequest(protocol2File.data, 'compound', 'usdc');
+
+    console.log(protocol1)
+    console.log(protocol2)
 
     // borrow APY
     let supplyAPYs = {};
@@ -104,28 +135,64 @@ getHistoricData = (poolAddress) => {
 
         } else if (sameDay) {
             supplyAPYs[keyDate] = {};
-            supplyAPYs[keyDate][protocol1[i].protocolName] = protocol1[i].apyBaseBorrow;
-            supplyAPYs[keyDate][protocol2[i].protocolName] = protocol2[i].apyBaseBorrow;
+            supplyAPYs[keyDate].protocol1 = protocol1[i];
+            supplyAPYs[keyDate].protocol2 = protocol2[i];
         } else console.log('we missed one!')
     }
 
 
-    console.log(supplyAPYs)
-    // iterate through borrow APYs,
-    // for (let date in borrowAPYs) {
-    //
-    //     if ( (borrowAPYs[date][lendingProvider1] < borrowAPYs[date][lendingProvider2] - 0.5) && (borrowingVault.providerDistribution[lendingProvider1] != 1) ) {
-    //         borrowingVault.providerDistribution[lendingProvider1] = 1;
-    //         borrowingVault.providerDistribution[lendingProvider2] = 0;
-    //     } else if ( (borrowAPYs[date][lendingProvider2] < borrowAPYs[date][lendingProvider1] - 0.5) && (borrowingVault.providerDistribution[lendingProvider2] != 1) ) {
-    //         borrowingVault.providerDistribution[lendingProvider1] = 0;
-    //         borrowingVault.providerDistribution[lendingProvider2] = 1;
-    //     }
-    //
-    //     borrowingVault.apyHistory[date] = {
-    //         'activeProvider': borrowingVault.providerDistribution,
-    //         'activeApy': borrowAPYs[date]
-    //     };
-    // }
+    console.log(Object.keys(supplyAPYs).length)
+    // iterate through supply APYs,
+    for (let date in supplyAPYs) {
+        let {protocol1, protocol2} = supplyAPYs[date]
+        console.log(protocol1, protocol2)
+
+        // sort a list of apys in an object based on their apy decending, and keep the apy minimal stored as we want to bring the higher apy down by providing the supply there
+        apyList = []
+
+        // to store the amount of apy after our capital is stored
+        balancedApyProtocol1 = 0
+        balancedApyProtocol2 = 0
+
+        // hardcoded for usdc, can be fixed or variable slope, using variable slope here
+        apyProtocol1 = calculateApyVariable(protocol1)
+        apyProtocol2 = calculateApyVariable(protocol2)
+
+
+
+        // capital required to get the apys balanced
+        if(apyProtocol1 < apyProtocol2){
+            // bring down apyProtocol2 to apyprotocol1's level
+            balancedApyProtocol2 = calculateApyVariable(protocol2, 'balance', {amount: 4000000, lowestApy: apyProtocol1})
+            balancedApyProtocol1 = apyProtocol1
+            console.log('apyProtocol1 is lower')
+        } else {
+            // bring down apyProtocol2 to apyprotocol1's level
+            balancedApyProtocol1 = calculateApyVariable(protocol2, 'balance', {amount: 4000000, lowestApy: apyProtocol1})
+            balancedApyProtocol2 = apyProtocol2
+            console.log('apyProtocol2 is lower')
+        }
+
+
+        // compare
+        console.log(apyProtocol1, apyProtocol2)
+        console.log(balancedApyProtocol1, balancedApyProtocol2)
+
+
+
+
+        // if ( (borrowAPYs[date][lendingProvider1] < borrowAPYs[date][lendingProvider2] - 0.5) && (borrowingVault.providerDistribution[lendingProvider1] != 1) ) {
+        //     borrowingVault.providerDistribution[lendingProvider1] = 1;
+        //     borrowingVault.providerDistribution[lendingProvider2] = 0;
+        // } else if ( (borrowAPYs[date][lendingProvider2] < borrowAPYs[date][lendingProvider1] - 0.5) && (borrowingVault.providerDistribution[lendingProvider2] != 1) ) {
+        //     borrowingVault.providerDistribution[lendingProvider1] = 0;
+        //     borrowingVault.providerDistribution[lendingProvider2] = 1;
+        // }
+        //
+        // borrowingVault.apyHistory[date] = {
+        //     'activeProvider': borrowingVault.providerDistribution,
+        //     'activeApy': borrowAPYs[date]
+        // };
+    }
 })();
 
