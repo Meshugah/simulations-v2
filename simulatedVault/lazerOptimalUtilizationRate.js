@@ -18,6 +18,7 @@ calculateApyVariable = (protocol, type = 'default', obj) => {
 
     // switch between this function types possible utilisation rates
     utilisationRate = 0
+    targetAmount = 0
     switch (type) {
         case 'default':
             utilisationRate = protocol.utilisationRate
@@ -28,10 +29,21 @@ calculateApyVariable = (protocol, type = 'default', obj) => {
     }
 // 0.35550774565144816
 
-
     if(utilisationRate>0.9) console.log('meme')
     // calculation for under optimal utilisation
     rate = (baseAPY + utilisationRate*0.04) * 100
+    // console.log('rate:', rate)
+
+    // // only calulate target amount required for rebalance if type is 'balance'
+    switch (type) {
+        case 'default':
+            break
+        case 'balance':
+            // leftover amount to get to normal, substituting rate's formula with utilisation rate. solving for this
+            targetAmount = 0.04 * protocol.totalBorrowUsd / ((obj.lowestApy) / 100 - baseAPY) - protocol.totalSupplyUsd - obj.amount
+            console.log(targetAmount)
+            break
+    }
     return rate
 }
 
@@ -93,8 +105,8 @@ getHistoricData = (poolAddress) => {
     protocol1 = formatApiRequest(protocol1File.data, 'aave', 'usdc'); // todo change to accept pools
     protocol2 = formatApiRequest(protocol2File.data, 'compound', 'usdc');
 
-    console.log(protocol1)
-    console.log(protocol2)
+    // console.log(protocol1)
+    // console.log(protocol2)
 
     // borrow APY
     let supplyAPYs = {};
@@ -141,11 +153,11 @@ getHistoricData = (poolAddress) => {
     }
 
 
-    console.log(Object.keys(supplyAPYs).length)
+    // console.log(Object.keys(supplyAPYs).length)
     // iterate through supply APYs,
     for (let date in supplyAPYs) {
         let {protocol1, protocol2} = supplyAPYs[date]
-        console.log(protocol1, protocol2)
+        // console.log(protocol1, protocol2)
 
         // sort a list of apys in an object based on their apy decending, and keep the apy minimal stored as we want to bring the higher apy down by providing the supply there
         apyList = []
@@ -163,16 +175,36 @@ getHistoricData = (poolAddress) => {
         // capital required to get the apys balanced
         if(apyProtocol1 < apyProtocol2){
             // bring down apyProtocol2 to apyprotocol1's level
-            balancedApyProtocol2 = calculateApyVariable(protocol2, 'balance', {amount: 4000000, lowestApy: apyProtocol1})
+            balancedApyProtocol2 = calculateApyVariable(protocol2, 'balance', {amount: 10000000 -1352513.295011282, lowestApy: apyProtocol1})
             balancedApyProtocol1 = apyProtocol1
             console.log('apyProtocol1 is lower')
         } else {
-            // bring down apyProtocol2 to apyprotocol1's level
-            balancedApyProtocol1 = calculateApyVariable(protocol2, 'balance', {amount: 4000000, lowestApy: apyProtocol1})
+            continue
+            // bring down apyProtocol1 to apyprotocol2's level
+            balancedApyProtocol1 = calculateApyVariable(protocol1, 'balance', {amount: 10000000, lowestApy: apyProtocol2})
             balancedApyProtocol2 = apyProtocol2
             console.log('apyProtocol2 is lower')
         }
 
+        // todo vignesh get back the amount from that function and then return it as an amount.
+        //  now you need to return the value, if it's positive, then that's an amount I need to return
+        //  now if it's negative, I have that amount to balance.
+        //  I have a utilisation rate that I need to calculate and redistribute capital to these protocols
+        //  how do i do that? I think If i sort utilization rates descending, then I should have the protocol that I want to allocate to.
+
+        // Risk: Higher utilization rates can indicate that more funds have been borrowed from the protocol. This suggests a higher demand for borrowing and potentially higher usage of the protocol. However, it may also imply a higher risk of default if borrowers are unable to repay their loans. If you prefer a lower risk profile, you might choose the protocol with a lower utilization rate.
+        //
+        // Earnings Stability: Lower utilization rates might suggest that the protocol has more available funds for lending, potentially leading to a more stable earning environment. With lower competition for borrowing, you may have a higher likelihood of consistently earning the stated APR. However, keep in mind that a lower utilization rate may also mean lower overall returns.
+        //
+        // Liquidity and Availability: Higher utilization rates indicate a more active lending and borrowing market within the protocol. This could translate into better liquidity for your deposited funds, making it easier to lend or withdraw when needed. Conversely, a lower utilization rate might mean your funds might be less readily available for borrowing or withdrawal.
+        //
+        // Platform Preferences: Consider any additional features, security measures, user experience, or community reputation associated with each protocol. These factors may influence your decision and should be taken into account alongside utilization rates.
+        //
+        // In summary, when the APRs are the same, it is important to assess your risk tolerance, desired earnings stability, liquidity needs, and platform preferences to determine whether depositing into a protocol with a higher or lower utilization rate aligns better with your objectives.
+        //
+        // Maximise returns by sticking in yield to provide returns. maybe I can just call the functions recursively
+
+        // todo check why aave is not coming up in the protocol names
 
         // compare
         console.log(apyProtocol1, apyProtocol2)
