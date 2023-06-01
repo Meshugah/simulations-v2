@@ -469,10 +469,10 @@ function findObjectByTimestamp(obj, timestamp) {
     }
 
 // Constants
-    const capitalAvailability = 500000; // Capital availability towards the total supply
+    const capitalAvailability = 20000000; // Capital availability towards the total supply
 
 // Call the function to get the highest weighted average APY, best allocation, and allocation list
-    const result = calculateHighestAPYAndAllocation(supplyAPYs, capitalAvailability);
+    result = calculateHighestAPYAndAllocation(supplyAPYs, capitalAvailability);
 
 // Output the results
     console.log("Highest Weighted Average APY:", result.highestWeightedAverageAPY);
@@ -495,6 +495,155 @@ function findObjectByTimestamp(obj, timestamp) {
     // console.log('number of times run:', rebalanceCounter)
 
     // Function used to calculate the above but subtracting gas costs every transaction.
+
+
+// Function to calculate the weighted average APY, allocation list, and running average
+    function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability) {
+        let allocationList = [];
+        let runningAverage = 0;
+        let count = 0;
+
+        for (const date in supplyAPYs) {
+            const apyProtocol1 = supplyAPYs[date].protocol1.apyBase;
+            const apyProtocol2 = supplyAPYs[date].protocol2.apyBase;
+            const totalSupplyUsdProtocol1 = supplyAPYs[date].protocol1.totalSupplyUsd;
+            const totalSupplyUsdProtocol2 = supplyAPYs[date].protocol2.totalSupplyUsd;
+
+            // Allocate capital to protocols
+            const allocatedCapitalProtocol1 = (apyProtocol1 * totalSupplyUsdProtocol1) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2) * capitalAvailability;
+            const allocatedCapitalProtocol2 = (apyProtocol2 * totalSupplyUsdProtocol2) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2) * capitalAvailability;
+
+            // Recalculate APYs based on allocated capital
+            const apyProtocol1Allocated = apyProtocol1 * totalSupplyUsdProtocol1 / (totalSupplyUsdProtocol1 + allocatedCapitalProtocol1);
+            const apyProtocol2Allocated = apyProtocol2 * totalSupplyUsdProtocol2 / (totalSupplyUsdProtocol2 + allocatedCapitalProtocol2);
+
+            // Calculate the weighted average APY
+            const weightedAverageAPY = (apyProtocol1Allocated * allocatedCapitalProtocol1 + apyProtocol2Allocated * allocatedCapitalProtocol2) / capitalAvailability;
+
+            // Add allocation and APY to the list
+            allocationList.push({
+                date,
+                allocationProtocol1: allocatedCapitalProtocol1,
+                allocationProtocol2: allocatedCapitalProtocol2,
+                apyProtocol1: apyProtocol1Allocated,
+                apyProtocol2: apyProtocol2Allocated,
+            });
+
+            // Update the running average
+            runningAverage = (runningAverage * count + weightedAverageAPY) / (count + 1);
+            count++;
+        }
+
+        // Return the allocation list and running average
+        return { allocationList, runningAverage };
+    }
+
+
+
+// Call the function to get the weighted average APY, allocation list, and running average
+    result = calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability);
+
+// Output the results
+    console.log("Allocation List:");
+    result.allocationList.forEach(({ date, allocationProtocol1, allocationProtocol2, apyProtocol1, apyProtocol2 }) => {
+        console.log(`Date: ${date}`);
+        console.log(`Protocol 1: Allocation - ${allocationProtocol1}, APY - ${apyProtocol1}`);
+        console.log(`Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`);
+    });
+    console.log("Running Average For Combined:", result.runningAverage);
+
+
+
+
+// Function to calculate the weighted average APY, allocation list, and running average
+    // Function to calculate the weighted average APY, allocation list, and running average
+    function calculateWeightedAverageAPYAndAllocation2(supplyAPYs, capitalAvailability) {
+        let allocationListProtocol1 = [];
+        let allocationListProtocol2 = [];
+        let runningAverageProtocol1 = 0;
+        let runningAverageProtocol2 = 0;
+        let count = 0;
+
+        for (const date in supplyAPYs) {
+            const apyProtocol1 = supplyAPYs[date].protocol1.apyBase;
+            const apyProtocol2 = supplyAPYs[date].protocol2.apyBase;
+            const totalSupplyUsdProtocol1 = supplyAPYs[date].protocol1.totalSupplyUsd;
+            const totalSupplyUsdProtocol2 = supplyAPYs[date].protocol2.totalSupplyUsd;
+
+            // Allocate capital to protocols
+            const allocatedCapitalProtocol1 = (apyProtocol1 * totalSupplyUsdProtocol1) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2) * capitalAvailability;
+            const allocatedCapitalProtocol2 = (apyProtocol2 * totalSupplyUsdProtocol2) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2) * capitalAvailability;
+
+            // Recalculate APYs based on allocated capital
+            const apyProtocol1Allocated = apyProtocol1 * totalSupplyUsdProtocol1 / (totalSupplyUsdProtocol1 + allocatedCapitalProtocol1);
+            const apyProtocol2Allocated = apyProtocol2 * totalSupplyUsdProtocol2 / (totalSupplyUsdProtocol2 + allocatedCapitalProtocol2);
+
+            // Calculate the weighted average APY
+            const weightedAverageAPYProtocol1 = (apyProtocol1Allocated * allocatedCapitalProtocol1) / capitalAvailability;
+            const weightedAverageAPYProtocol2 = (apyProtocol2Allocated * allocatedCapitalProtocol2) / capitalAvailability;
+
+            // Add allocation and APY to the lists
+            allocationListProtocol1.push({
+                date,
+                allocationProtocol1: allocatedCapitalProtocol1,
+                allocationProtocol2: allocatedCapitalProtocol2,
+                apyProtocol1: apyProtocol1Allocated,
+                apyProtocol2: apyProtocol2Allocated,
+            });
+
+            allocationListProtocol2.push({
+                date,
+                allocationProtocol1: 0,
+                allocationProtocol2: capitalAvailability,
+                apyProtocol1: 0,
+                apyProtocol2: apyProtocol2,
+            });
+
+            // Update the running averages
+            runningAverageProtocol1 = (runningAverageProtocol1 * count + weightedAverageAPYProtocol1) / (count + 1);
+            runningAverageProtocol2 = (runningAverageProtocol2 * count + weightedAverageAPYProtocol2) / (count + 1);
+            count++;
+        }
+
+        // Return the allocation lists and running averages
+        return { allocationListProtocol1, allocationListProtocol2, runningAverageProtocol1, runningAverageProtocol2 };
+    }
+
+
+
+// Call the function to get the weighted average APY, allocation lists, and running averages
+    result = calculateWeightedAverageAPYAndAllocation2(supplyAPYs, capitalAvailability);
+
+// Output the results for allocation towards Protocol 1
+//     console.log("Allocation List (Protocol 1):");
+//     result.allocationListProtocol1.forEach(({ date, allocationProtocol1, allocationProtocol2, apyProtocol1, apyProtocol2 }) => {
+//         console.log(`Date: ${date}`);
+//         console.log(`Protocol 1: Allocation - ${allocationProtocol1}, APY - ${apyProtocol1}`);
+//         console.log(`Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`);
+//     });
+    console.log("Running Average (Protocol 1):", result.runningAverageProtocol1);
+
+// Output the results for allocation towards Protocol 2
+//     console.log("Allocation List (Protocol 2):");
+//     result.allocationListProtocol2.forEach(({ date, allocationProtocol1, allocationProtocol2, apyProtocol1, apyProtocol2 }) => {
+//         console.log(`Date: ${date}`);
+//         console.log(`Protocol 1: Allocation - ${allocationProtocol1}, APY - ${apyProtocol1}`);
+//         console.log(`Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`);
+//     });
+    console.log("Running Average (Protocol 2):", result.runningAverageProtocol2);
+
+// Output the results
+//     console.log("Protocol 1 Allocation List:");
+//     result.allocationListProtocol1.forEach(({ date, allocationProtocol1, apyProtocol1 }) => {
+//         console.log(`Date: ${date}`);
+//         console.log(`Protocol 1: Allocation - ${allocationProtocol1}, APY - ${apyProtocol1}`);
+//     });
+//
+//     console.log("Protocol 2 Allocation List:");
+//     result.allocationListProtocol2.forEach(({ date, allocationProtocol2, apyProtocol2 }) => {
+//         console.log(`Date: ${date}`);
+//         console.log(`Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`);
+//     });
 
 
 
