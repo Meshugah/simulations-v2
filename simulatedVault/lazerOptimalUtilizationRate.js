@@ -19,32 +19,62 @@ calculateApyVariable = (protocol, type = 'default', obj) => {
     // switch between this function types possible utilisation rates
     utilisationRate = 0
     targetAmount = 0
+    current = 0
+
     switch (type) {
         case 'default':
             utilisationRate = protocol.utilisationRate
             break
+        case 'flatten':
         case 'balance':
             utilisationRate = protocol.totalBorrowUsd/(protocol.totalSupplyUsd + obj.amount)
             break
     }
 // 0.35550774565144816
 
-    if(utilisationRate>0.9) console.log('meme')
+    if(utilisationRate>0.9) console.log('Highutilisation!')
     // calculation for under optimal utilisation
     rate = (baseAPY + utilisationRate*0.04) * 100
     // console.log('rate:', rate)
 
-    // // only calulate target amount required for rebalance if type is 'balance'
+    // // only calulate target amount required for rebalance if type is 'balance', use that target to 'flatten' the higher APY, and get back the lower APY.
     switch (type) {
         case 'default':
             break
         case 'balance':
             // leftover amount to get to normal, substituting rate's formula with utilisation rate. solving for this
             targetAmount = 0.04 * protocol.totalBorrowUsd / ((obj.lowestApy) / 100 - baseAPY) - protocol.totalSupplyUsd - obj.amount
-            console.log(targetAmount)
             break
+        case 'flatten':
+            // we've only allocated capital towards supply. updating this and returning this
+            let currentSupplyUsd = protocol.totalSupplyUsd - obj.amount
+            current = {
+                // store the values that are current to this method
+                supplyUsd : currentSupplyUsd,
+                borrowUsd : protocol.totalBorrowUsd,
+                utilisationRate: protocol.totalBorrowUsd/currentSupplyUsd
+            }
+
+
+
+
     }
-    return rate
+    // {
+    //     "timestamp": "2022-09-21T23:00:53.126Z",
+    //     "apyBase": 0.41483,
+    //     "utilisationRate": 0.3117194840944437,
+    //     "totalBorrowUsd": 429704989,
+    //     "totalSupplyUsd": 1378498974,
+    //     "protocolName": "aave",
+    //     "assetName": "usdc"
+    // }
+
+    // {
+    //     "supplyUsd": 832204324.1032931,
+    //     "borrowUsd": 317764617,
+    //     "utilisationRate": 0.3818348544900845
+    // }
+    return {rate, targetAmount, current, obj}
 }
 
 // only store fields, timestamp, apyBase, totalSupplyUsd, totalBorrowUsd, protocol name, utilisation rate
@@ -166,22 +196,32 @@ getHistoricData = (poolAddress) => {
         balancedApyProtocol1 = 0
         balancedApyProtocol2 = 0
 
+        // to store the lowest APY possible when deploying all capital into the largest strategy
+        lowestApy = 0
+
         // hardcoded for usdc, can be fixed or variable slope, using variable slope here
-        apyProtocol1 = calculateApyVariable(protocol1)
-        apyProtocol2 = calculateApyVariable(protocol2)
+        const {rate: apyProtocol1} = calculateApyVariable(protocol1)
+        const {rate: apyProtocol2} = calculateApyVariable(protocol2)
 
-
+        // main, capital deployed as a total
+        let capitalDeployed = 200000000
+        // capitalDeployed = 10000000 -1352513.295011282
 
         // capital required to get the apys balanced
-        if(apyProtocol1 < apyProtocol2){
+        if (apyProtocol1 < apyProtocol2) {
             // bring down apyProtocol2 to apyprotocol1's level
-            balancedApyProtocol2 = calculateApyVariable(protocol2, 'balance', {amount: 10000000 -1352513.295011282, lowestApy: apyProtocol1})
+            returnObj = calculateApyVariable(protocol2, 'balance', {amount: capitalDeployed, lowestApy: apyProtocol1})
+            balancedApyProtocol2 = returnObj.rate
+            rebalanceAmount = returnObj.targetAmount
+
             balancedApyProtocol1 = apyProtocol1
             console.log('apyProtocol1 is lower')
         } else {
             continue
             // bring down apyProtocol1 to apyprotocol2's level
-            balancedApyProtocol1 = calculateApyVariable(protocol1, 'balance', {amount: 10000000, lowestApy: apyProtocol2})
+            returnObj = calculateApyVariable(protocol1, 'balance', {amount: 10000000, lowestApy: apyProtocol2})
+            balancedApyProtocol1 = returnObj.rate
+            rebalanceAmount = returnObj.targetAmount
             balancedApyProtocol2 = apyProtocol2
             console.log('apyProtocol2 is lower')
         }
@@ -206,25 +246,131 @@ getHistoricData = (poolAddress) => {
 
         // todo check why aave is not coming up in the protocol names
 
+
+        // this is only for  if (apyProtocol1 < apyProtocol2) { // todo vignesh add the opposite case
+        // basically, if it's in a rebalance case, if it doesnt cross this threshold, it's just max allocation into max APY lending market
+        if (rebalanceAmount < 0) {
+            // allocate capital in both so that APY is maximal
+            // so let's run it again and get the utilisation rates this time
+            if (apyProtocol1 < apyProtocol2) {
+                // bring down apyProtocol2 to apyprotocol1's level
+                returnObj = calculateApyVariable(protocol2, 'flatten', {
+                    amount: capitalDeployed + rebalanceAmount,
+                    lowestApy: apyProtocol1,
+                    otherProtocol: protocol1
+                })
+                balancedApyProtocol2 = returnObj.rate
+            }
+
+
+        }
+
         // compare
         console.log(apyProtocol1, apyProtocol2)
         console.log(balancedApyProtocol1, balancedApyProtocol2)
+        console.log(rebalanceAmount)
 
 
+        console.log(returnObj)
 
-
-        // if ( (borrowAPYs[date][lendingProvider1] < borrowAPYs[date][lendingProvider2] - 0.5) && (borrowingVault.providerDistribution[lendingProvider1] != 1) ) {
-        //     borrowingVault.providerDistribution[lendingProvider1] = 1;
-        //     borrowingVault.providerDistribution[lendingProvider2] = 0;
-        // } else if ( (borrowAPYs[date][lendingProvider2] < borrowAPYs[date][lendingProvider1] - 0.5) && (borrowingVault.providerDistribution[lendingProvider2] != 1) ) {
-        //     borrowingVault.providerDistribution[lendingProvider1] = 0;
-        //     borrowingVault.providerDistribution[lendingProvider2] = 1;
+        // ideal allocation between the protocols
+        // Current APYs for each protocol
+        // const currentAPYProtocolA = returnObj.rate; // Current APY for Protocol A
+        // const currentAPYProtocolB = returnObj.rate; // Current APY for Protocol B
+        //
+        // // Function to calculate the maximum possible desired APY based on current APYs
+        // function calculateMaxDesiredAPY(currentAPYProtocolA, currentAPYProtocolB, utilizationRateProtocolA, utilizationRateProtocolB) {
+        //     // Calculate the maximum desired APYs based on the current APYs
+        //     const maxDesiredAPYProtocolA = currentAPYProtocolA / utilizationRateProtocolA;
+        //     const maxDesiredAPYProtocolB = currentAPYProtocolB / utilizationRateProtocolB;
+        //
+        //     // Calculate the maximum possible desired APY
+        //     // Return the maximum possible desired APY // todo vignesh
+        //     return Math.min(maxDesiredAPYProtocolA, maxDesiredAPYProtocolB);
         // }
         //
-        // borrowingVault.apyHistory[date] = {
-        //     'activeProvider': borrowingVault.providerDistribution,
-        //     'activeApy': borrowAPYs[date]
-        // };
+        // // Utilization rates for each protocol
+        // const utilizationRateProtocolA = returnObj.current.utilisationRate; // Utilization rate for Protocol A
+        // const utilizationRateProtocolB = returnObj.obj.otherProtocol.utilisationRate; // Utilization rate for Protocol B
+        //
+        // // Call the function to get the maximum possible desired APY
+        // const maxDesiredAPY = calculateMaxDesiredAPY(currentAPYProtocolA, currentAPYProtocolB, utilizationRateProtocolA, utilizationRateProtocolB);
+
+
+        // this is allocation if the total amount is not used, and just the extra amount to balance
+        // Constants
+        const currentAPYProtocolA = apyProtocol1; // Current APY for each protocol
+        const currentAPYProtocolB = apyProtocol2; // Current APY for each protocol
+        const capitalAvailability = Math.abs(capitalDeployed); // Capital availability towards the total supply
+        const utilizationRateProtocolA = returnObj.current.utilisationRate; // Utilization rate for Protocol A
+        const utilizationRateProtocolB = returnObj.obj.otherProtocol.utilisationRate; // Utilization rate for Protocol B
+        const totalSupplyProtocolA = returnObj.current.supplyUsd; // Total supply for Protocol A
+        const totalSupplyProtocolB = returnObj.obj.otherProtocol.totalSupplyUsd; // Total supply for Protocol B
+
+// Function to calculate the highest APY and allocation amounts
+        console.log(apyProtocol1, apyProtocol2)
+        function calculateHighestAPYAndAllocation(currentAPYProtocolA, currentAPYProtocolB, capitalAvailability, utilizationRateProtocolA, utilizationRateProtocolB, totalSupplyProtocolA, totalSupplyProtocolB) {
+            let highestAPY = 0;
+            let allocationProtocolA = 0;
+            let allocationProtocolB = 0;
+            let benchmarkAPY = 0;
+
+            for (let amountProtocolA = 0; amountProtocolA <= capitalAvailability; amountProtocolA += 1000) {
+                const amountProtocolB = capitalAvailability - amountProtocolA;
+                const apyProtocolA = currentAPYProtocolA * (amountProtocolA / (totalSupplyProtocolA * utilizationRateProtocolA));
+                const apyProtocolB = currentAPYProtocolB * (amountProtocolB / (totalSupplyProtocolB * utilizationRateProtocolB));
+                const totalAPY = apyProtocolA + apyProtocolB;
+
+                if (totalAPY > highestAPY) {
+                    highestAPY = totalAPY;
+                    allocationProtocolA = amountProtocolA;
+                    allocationProtocolB = amountProtocolB;
+                }
+
+                if (amountProtocolA === capitalAvailability) {
+                    benchmarkAPY = Math.max(currentAPYProtocolA, currentAPYProtocolB);
+                }
+            }
+
+            // Return the highest APY, allocation amounts, and benchmark APY
+            return { highestAPY, allocationProtocolA, allocationProtocolB, benchmarkAPY };
+        }
+
+        // Call the function to get the highest APY, allocation amounts, and benchmark APY
+        const result = calculateHighestAPYAndAllocation(currentAPYProtocolA, currentAPYProtocolB, capitalAvailability, utilizationRateProtocolA, utilizationRateProtocolB, totalSupplyProtocolA, totalSupplyProtocolB);
+
+        // Output the results
+        console.log("Highest APY:", result.highestAPY);
+        console.log("Allocation for Protocol A:", result.allocationProtocolA);
+        console.log("Allocation for Protocol B:", result.allocationProtocolB);
+
+        benchmark = (currentAPY, capital, utilizationRate, totalSupply) => {
+            const apy = currentAPY * (capital / (totalSupply * utilizationRate));
+            return apy;
+        }
+
+        console.log("Benchmark APY (if all capital in one protocol):", benchmark(apyProtocol1>apyProtocol2?apyProtocol1:apyProtocol2, capitalAvailability, apyProtocol1>apyProtocol2?utilizationRateProtocolA:utilizationRateProtocolB, apyProtocol1>apyProtocol2?totalSupplyProtocolA:totalSupplyProtocolB));
+
+
+
+
+
+        console.log('------------')
     }
 })();
+
+// add gas costs for each transaction, withdraw.
+
+// ICP
+// Acquisition
+// Activation
+// Revenue
+// Retention
+// Referral (ask for referrals, top thing to do)
+
+// Cac to CLTV
+// Good ratio is CLTV
+// 4:1 is great, 3:1 is good
+
+// i need to be in a country where i can do client dinners
 
