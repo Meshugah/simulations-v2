@@ -125,11 +125,38 @@ getHistoricData = (poolAddress) => {
     return response;
 }
 
+// Function to recursively search for the nested object
+function findObjectByTimestamp(obj, timestamp) {
+    // convert timestamp from date to timestamp
+    const timeInUnix = timestampToDate(timestamp).getTime()/1000
+
+
+    // Check if the current object's timestamp matches the query timestamp
+    if (obj.UnixTimeStamp === timeInUnix) {
+        return obj; // Found the object with the matching timestamp
+    }
+
+    // Iterate through each property of the current object
+    for (const key in obj) {
+        if (typeof obj[key] === "object" && obj[key] !== null) {
+            // Recursively search for the nested object
+            const foundObject = findObjectByTimestamp(obj[key], timestamp);
+            if (foundObject) {
+                return foundObject; // Return the found object
+            }
+        }
+    }
+
+    return null; // Return null if the object with the matching timestamp is not found
+}
+
+
 // Main IIFE
 (async function() {
     // Get Historic Data from saved file
     protocol1File = require('./aaveData')
     protocol2File = require('./compoundData')
+    gasFile = require('./gasDataEth.json')
 
     // format data into only categories we require
     protocol1 = formatApiRequest(protocol1File.data, 'aave', 'usdc'); // todo change to accept pools
@@ -179,6 +206,13 @@ getHistoricData = (poolAddress) => {
             supplyAPYs[keyDate] = {};
             supplyAPYs[keyDate].protocol1 = protocol1[i];
             supplyAPYs[keyDate].protocol2 = protocol2[i];
+            // enrich with gas values
+            // for protocol1
+            // supplyAPYs[keyDate].protocol1.gas =
+            const gas = findObjectByTimestamp(gasFile, protocol1[i].timestamp)
+            supplyAPYs[keyDate].protocol1.gas = gas['Value (Wei)']
+            supplyAPYs[keyDate].protocol2.gas = gas['Value (Wei)']
+
         } else console.log('we missed one!')
     }
 
@@ -271,7 +305,7 @@ getHistoricData = (poolAddress) => {
         console.log(rebalanceAmount)
 
 
-        console.log(returnObj)
+        // console.log(returnObj)
 
         // ideal allocation between the protocols
         // Current APYs for each protocol
@@ -306,14 +340,17 @@ getHistoricData = (poolAddress) => {
         const utilizationRateProtocolB = returnObj.obj.otherProtocol.utilisationRate; // Utilization rate for Protocol B
         const totalSupplyProtocolA = returnObj.current.supplyUsd; // Total supply for Protocol A
         const totalSupplyProtocolB = returnObj.obj.otherProtocol.totalSupplyUsd; // Total supply for Protocol B
+        const rebalanceCounter = 0;
+        // const cost
 
-// Function to calculate the highest APY and allocation amounts
+
+        // Function to calculate the highest APY and allocation amounts
         console.log(apyProtocol1, apyProtocol2)
         function calculateHighestAPYAndAllocation(currentAPYProtocolA, currentAPYProtocolB, capitalAvailability, utilizationRateProtocolA, utilizationRateProtocolB, totalSupplyProtocolA, totalSupplyProtocolB) {
             let highestAPY = 0;
             let allocationProtocolA = 0;
             let allocationProtocolB = 0;
-            let benchmarkAPY = 0;
+
 
             for (let amountProtocolA = 0; amountProtocolA <= capitalAvailability; amountProtocolA += 1000) {
                 const amountProtocolB = capitalAvailability - amountProtocolA;
@@ -325,15 +362,12 @@ getHistoricData = (poolAddress) => {
                     highestAPY = totalAPY;
                     allocationProtocolA = amountProtocolA;
                     allocationProtocolB = amountProtocolB;
-                }
-
-                if (amountProtocolA === capitalAvailability) {
-                    benchmarkAPY = Math.max(currentAPYProtocolA, currentAPYProtocolB);
+                    // rebalanceCounter++;
                 }
             }
 
             // Return the highest APY, allocation amounts, and benchmark APY
-            return { highestAPY, allocationProtocolA, allocationProtocolB, benchmarkAPY };
+            return { highestAPY, allocationProtocolA, allocationProtocolB};
         }
 
         // Call the function to get the highest APY, allocation amounts, and benchmark APY
@@ -344,13 +378,15 @@ getHistoricData = (poolAddress) => {
         console.log("Allocation for Protocol A:", result.allocationProtocolA);
         console.log("Allocation for Protocol B:", result.allocationProtocolB);
 
+        // benchmark calculation
         benchmark = (currentAPY, capital, utilizationRate, totalSupply) => {
             const apy = currentAPY * (capital / (totalSupply * utilizationRate));
             return apy;
         }
-
         console.log("Benchmark APY (if all capital in one protocol):", benchmark(apyProtocol1>apyProtocol2?apyProtocol1:apyProtocol2, capitalAvailability, apyProtocol1>apyProtocol2?utilizationRateProtocolA:utilizationRateProtocolB, apyProtocol1>apyProtocol2?totalSupplyProtocolA:totalSupplyProtocolB));
+        console.log('number of times run:', rebalanceCounter)
 
+        // Function used to calculate the above but subtracting gas costs every transaction.
 
 
 
@@ -358,6 +394,8 @@ getHistoricData = (poolAddress) => {
         console.log('------------')
     }
 })();
+
+
 
 // add gas costs for each transaction, withdraw.
 
