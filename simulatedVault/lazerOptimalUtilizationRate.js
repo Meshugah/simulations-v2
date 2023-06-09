@@ -125,14 +125,36 @@ getHistoricData = (poolAddress) => {
     return response;
 }
 
+function matchTimestamps(timestamp1, timestamp2) {
+    const date1 = new Date(timestamp1);
+    const date2 = new Date(timestamp2);
+
+    const day1 = date1.getDate();
+    const month1 = date1.getMonth();
+    const year1 = date1.getFullYear();
+
+    const day2 = date2.getDate();
+    const month2 = date2.getMonth();
+    const year2 = date2.getFullYear();
+
+    if (day1 === day2 && month1 === month2 && year1 === year2) {
+        return true
+        // Timestamps match based on day, month, and year
+        // console.log("Timestamps match!");
+    } else {
+        return false
+        // Timestamps do not match
+        // console.log("Timestamps do not match.");
+    }
+}
+
 // Function to recursively search for the nested object
 function findObjectByTimestamp(obj, timestamp) {
     // convert timestamp from date to timestamp
     const timeInUnix = timestampToDate(timestamp).getTime()/1000
 
-
     // Check if the current object's timestamp matches the query timestamp
-    if (obj.UnixTimeStamp === timeInUnix) {
+    if (obj.UnixTimeStamp === timeInUnix || matchTimestamps(obj.timestamp, timestamp)) {
         return obj; // Found the object with the matching timestamp
     }
 
@@ -156,7 +178,9 @@ function findObjectByTimestamp(obj, timestamp) {
     // Get Historic Data from saved file
     protocol1File = require('./aaveData')
     protocol2File = require('./compoundData')
+    // todo vignesh this needs to move to a multi chain format.
     gasFile = require('./gasDataEth.json')
+    ethToUsdFile = require('./ethToUsd.json')
 
     // format data into only categories we require
     protocol1 = formatApiRequest(protocol1File.data, 'aave', 'usdc'); // todo change to accept pools
@@ -210,8 +234,11 @@ function findObjectByTimestamp(obj, timestamp) {
             // for protocol1
             // supplyAPYs[keyDate].protocol1.gas =
             const gas = findObjectByTimestamp(gasFile, protocol1[i].timestamp)
-            supplyAPYs[keyDate].protocol1.gas = gas['Value (Wei)']
-            supplyAPYs[keyDate].protocol2.gas = gas['Value (Wei)']
+            const ethToUsd = findObjectByTimestamp(ethToUsdFile, protocol1[i].timestamp)
+            supplyAPYs[keyDate].protocol1.gasUsed = (gas['Value (Wei)'])/(10e18) // conversion to wei
+            supplyAPYs[keyDate].protocol2.gasUsed = (gas['Value (Wei)'])/(10e18)  // convertsion to eth
+            supplyAPYs[keyDate].protocol1.ethToUsd = ethToUsd['open']
+            supplyAPYs[keyDate].protocol2.ethToUsd = ethToUsd['open']
 
         } else console.log('we missed one!')
     }
@@ -496,49 +523,66 @@ function findObjectByTimestamp(obj, timestamp) {
 
     // Function used to calculate the above but subtracting gas costs every transaction.
 
-
+// todo vignesh change it so that it has the lowest amount of capital allocated to it
 // Function to calculate the weighted average APY, allocation list, and running average
+    // Function to calculate the weighted average APY, allocation list, and running average
     function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability) {
         let allocationList = [];
-        let runningAverage = 0;
+        let runningSum = 0;
         let count = 0;
+        const adjustedYearlyReturnsList = [];
 
         for (const date in supplyAPYs) {
             const apyProtocol1 = supplyAPYs[date].protocol1.apyBase;
             const apyProtocol2 = supplyAPYs[date].protocol2.apyBase;
             const totalSupplyUsdProtocol1 = supplyAPYs[date].protocol1.totalSupplyUsd;
             const totalSupplyUsdProtocol2 = supplyAPYs[date].protocol2.totalSupplyUsd;
+            const gasUsedProtocol1 = supplyAPYs[date].protocol1.gasUsed;
+            const gasUsedProtocol2 = supplyAPYs[date].protocol2.gasUsed;
+            const ethToUsdProtocol1 = supplyAPYs[date].protocol1.ethToUsd;
+            const ethToUsdProtocol2 = supplyAPYs[date].protocol2.ethToUsd;
 
-            // Allocate capital to protocols
-            const allocatedCapitalProtocol1 = (apyProtocol1 * totalSupplyUsdProtocol1) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2) * capitalAvailability;
-            const allocatedCapitalProtocol2 = (apyProtocol2 * totalSupplyUsdProtocol2) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2) * capitalAvailability;
+            // Calculate the allocation ratios for Protocol 1 and Protocol 2
+            const allocationRatioProtocol1 = (apyProtocol1 * totalSupplyUsdProtocol1) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2);
+            const allocationRatioProtocol2 = (apyProtocol2 * totalSupplyUsdProtocol2) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2);
 
-            // Recalculate APYs based on allocated capital
-            const apyProtocol1Allocated = apyProtocol1 * totalSupplyUsdProtocol1 / (totalSupplyUsdProtocol1 + allocatedCapitalProtocol1);
-            const apyProtocol2Allocated = apyProtocol2 * totalSupplyUsdProtocol2 / (totalSupplyUsdProtocol2 + allocatedCapitalProtocol2);
+            // Calculate the adjusted yearly returns by subtracting the fixed cost for each protocol
+            const adjusted_yearly_returns_protocol1 = (apyProtocol1 - (gasUsedProtocol1 *  ethToUsdProtocol1)) * allocationRatioProtocol1;
+            const adjusted_yearly_returns_protocol2 = (apyProtocol2 - (gasUsedProtocol2 *  ethToUsdProtocol2)) * allocationRatioProtocol2;
 
-            // Calculate the weighted average APY
-            const weightedAverageAPY = (apyProtocol1Allocated * allocatedCapitalProtocol1 + apyProtocol2Allocated * allocatedCapitalProtocol2) / capitalAvailability;
+            adjustedYearlyReturnsList.push({
+                protocol1: adjusted_yearly_returns_protocol1,
+                protocol2: adjusted_yearly_returns_protocol2,
+            });
+
+            // Calculate the weighted average APY using the adjusted yearly returns if they are positive, otherwise use the original yearly returns
+            const weightedAverageAPY =
+                adjusted_yearly_returns_protocol1 >= 0 && adjusted_yearly_returns_protocol2 >= 0
+                    ? (adjusted_yearly_returns_protocol1 * allocationRatioProtocol1 + adjusted_yearly_returns_protocol2 * allocationRatioProtocol2)
+                    : (apyProtocol1 * allocationRatioProtocol1 + apyProtocol2 * allocationRatioProtocol2);
 
             // Add allocation and APY to the list
             allocationList.push({
                 date,
-                allocationProtocol1: allocatedCapitalProtocol1,
-                allocationProtocol2: allocatedCapitalProtocol2,
-                apyProtocol1: apyProtocol1Allocated,
-                apyProtocol2: apyProtocol2Allocated,
+                allocationProtocol1: allocationRatioProtocol1 * capitalAvailability,
+                allocationProtocol2: allocationRatioProtocol2 * capitalAvailability,
+                apyProtocol1,
+                apyProtocol2,
             });
 
-            // Update the running average
-            runningAverage = (runningAverage * count + weightedAverageAPY) / (count + 1);
-            count++;
+            // Update the running sum only if the adjusted yearly returns for both protocols are positive
+            if (adjusted_yearly_returns_protocol1 >= 0 && adjusted_yearly_returns_protocol2 >= 0) {
+                runningSum += weightedAverageAPY;
+                count++;
+            }
         }
 
-        // Return the allocation list and running average
-        return { allocationList, runningAverage };
+        // Calculate the running average
+        const runningAverage = count > 0 ? runningSum / count : 0;
+
+        // Return the allocation list, running average, and adjusted yearly returns list
+        return { allocationList, runningAverage, adjustedYearlyReturnsList };
     }
-
-
 
 // Call the function to get the weighted average APY, allocation list, and running average
     result = calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability);
@@ -551,8 +595,7 @@ function findObjectByTimestamp(obj, timestamp) {
         console.log(`Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`);
     });
     console.log("Running Average For Combined:", result.runningAverage);
-
-
+    // console.log("Adjusted Daily Returns List:", result.adjustedDailyReturnsList);
 
 
 // Function to calculate the weighted average APY, allocation list, and running average
@@ -621,7 +664,7 @@ function findObjectByTimestamp(obj, timestamp) {
 //         console.log(`Protocol 1: Allocation - ${allocationProtocol1}, APY - ${apyProtocol1}`);
 //         console.log(`Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`);
 //     });
-    console.log("Running Average (Protocol 1):", result.runningAverageProtocol1);
+//     console.log("Running Average (Protocol 1):", result.runningAverageProtocol1);
 
 // Output the results for allocation towards Protocol 2
 //     console.log("Allocation List (Protocol 2):");
@@ -646,25 +689,64 @@ function findObjectByTimestamp(obj, timestamp) {
 //     });
 
 
+    // todo vignesh
+    // add more deferential possibilities for different periods. Daily, weekly, monthly.
 
 
     console.log('------------')
 })();
 
 
+// add costs for each transactions. So I've got gas fees for everything. At a per calculation level. I need to subtract the APY for the gas. and get the overall from that. and also probably need to define a threshold above which you do not need to do rebalances.
+// i feel like i should calculate the daily apy and then that is my daily threshold.
+// I need to figure out what would make this deposit size independent.
 
-// add gas costs for each transaction, withdraw.
+// gas for deposit = gas for approve to LendingPool + gas for deposit transasction = 300k
+// gas for redeem = 600k
 
-// ICP
-// Acquisition
-// Activation
-// Revenue
-// Retention
-// Referral (ask for referrals, top thing to do)
+// redeem = 95058
+// first mint = 124570
 
-// Cac to CLTV
-// Good ratio is CLTV
-// 4:1 is great, 3:1 is good
+// i need to have a style for determining deposits vs withdrawals, and then by doing that i can find
+// I'm just gonna have an average for them that i use.
 
-// i need to be in a country where i can do client dinners
+// i need the historical wei to usd as well
 
+// so for aave
+// withdrawal
+// 276,755 | 207,564 (75%)
+// our 70% is 193,728.5
+
+// depsosit
+// 300,000 | 207,489 (69.16%)
+// our 60% is 180,000
+
+// the average we're using will be: 186,864.25
+
+// so for compound
+// redeem
+// 292,020 | 230,151 (78.81%)
+// 532,020 | 423,710 (79.64%)
+// 222,020 | 177,502 (79.95%)
+// 239,268 | 194,590 (81.33%)
+// 227,847 | 177,478 (77.89%)
+// using 250k
+
+// mint
+// 252,020 | 204,820 (81.27%)
+// 252,020 | 204,820 (81.27%)
+// 212,020 | 173,474 (81.82%)
+// 180k gas
+// so average for compound is 215k
+
+// on page redeems limit is 160k
+// https://etherscan.io/txs?a=0x39AA39c021dfbaE8faC545936693aC917d5E7563&p=300
+
+
+// okay so today, I need to get the gas for a chain from wei to usd. Just do eth, save that to a file, merge with the existing list for both protocols.
+// run it, see if it's still higher than the rest. And if it's not. Then do the to do above. I honestly hope it's positive irrespective. but we'll see.
+
+// calculate more defer
+
+
+// add transaction fees together, get the highest sum of it and try and rebalance it.
