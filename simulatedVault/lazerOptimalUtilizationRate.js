@@ -749,4 +749,5 @@ function findObjectByTimestamp(obj, timestamp) {
 // calculate more defer
 
 
+
 // add transaction fees together, get the highest sum of it and try and rebalance it.
