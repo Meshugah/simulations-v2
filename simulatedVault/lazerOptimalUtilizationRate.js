@@ -254,540 +254,104 @@ function findObjectByTimestamp(obj, timestamp) {
 
   // console.log(Object.keys(supplyAPYs).length)
 
-  // Function to calculate the highest APY and allocation amounts
-  function calculateHighestAPYAndAllocation(supplyAPYs, capitalAvailability) {
-    // let highestAPY = 0;
-    // let allocationProtocol1 = 0;
-    // let allocationProtocol2 = 0;
-    // let benchmarkAPY = 0;
-    let highestWeightedAverageAPY = 0
-    let bestAllocation = []
-    const allocationList = []
-    let apyAllCapitalInProtocol1 = 0
+    // Function to calculate the weighted average APY, allocation list, and running average
+    function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability) {
+        let allocationLists = {};
+        let runningAverages = {};
 
-    // iterate through supply APYs,
-    for (const date in supplyAPYs) {
-      const { protocol1, protocol2 } = supplyAPYs[date]
-      // console.log(protocol1, protocol2)
+        for (const date in supplyAPYs) {
+            allocationLists[date] = {};
+            runningAverages[date] = {};
 
-      // sort a list of apys in an object based on their apy decending, and keep the apy minimal stored as we want to bring the higher apy down by providing the supply there
-      apyList = []
+            let totalWeightedAverageAPY = 0;
+            let totalAllocatedCapital = 0;
 
-      // to store the amount of apy after our capital is stored
-      balancedApyProtocol1 = 0
-      balancedApyProtocol2 = 0
+            // Calculate the denominator for the allocation formula
+            let denominator = 0;
+            for (const protocol in supplyAPYs[date]) {
+                const apyBase = supplyAPYs[date][protocol].apyBase;
+                const totalSupplyUsd = supplyAPYs[date][protocol].totalSupplyUsd;
+                denominator += apyBase * totalSupplyUsd;
+            }
 
-      // to store the lowest APY possible when deploying all capital into the largest strategy
-      lowestApy = 0
+            for (const protocol in supplyAPYs[date]) {
+                const apyBase = supplyAPYs[date][protocol].apyBase;
+                const totalSupplyUsd = supplyAPYs[date][protocol].totalSupplyUsd;
 
-      // hardcoded for usdc, can be fixed or variable slope, using variable slope here
-      const { rate: apyProtocol1 } = calculateApyVariable(protocol1)
-      const { rate: apyProtocol2 } = calculateApyVariable(protocol2)
+                // Allocate capital to the protocol
+                const allocatedCapital = (apyBase * totalSupplyUsd) / denominator * capitalAvailability;
 
-      // main, capital deployed as a total
-      const capitalDeployed = 200000000
-      // capitalDeployed = 10000000 -1352513.295011282
+                // Recalculate APY based on allocated capital
+                const apyAllocated = apyBase * totalSupplyUsd / (totalSupplyUsd + allocatedCapital);
 
-      // capital required to get the apys balanced
-      if (apyProtocol1 < apyProtocol2) {
-        // bring down apyProtocol2 to apyprotocol1's level
-        returnObj = calculateApyVariable(protocol2, 'balance', {
-          amount: capitalDeployed,
-          lowestApy: apyProtocol1,
-        })
-        balancedApyProtocol2 = returnObj.rate
-        rebalanceAmount = returnObj.targetAmount
+                // Calculate the weighted average APY
+                const weightedAverageAPY = (apyAllocated * allocatedCapital) / capitalAvailability;
 
-        balancedApyProtocol1 = apyProtocol1
-        console.log('apyProtocol1 is lower')
-      } else {
-        continue
-        // bring down apyProtocol1 to apyprotocol2's level
-        returnObj = calculateApyVariable(protocol1, 'balance', {
-          amount: 10000000,
-          lowestApy: apyProtocol2,
-        })
-        balancedApyProtocol1 = returnObj.rate
-        rebalanceAmount = returnObj.targetAmount
-        balancedApyProtocol2 = apyProtocol2
-        console.log('apyProtocol2 is lower')
-      }
+                // Add allocation to the allocation list
+                allocationLists[date][protocol] = {
+                    allocatedCapital,
+                    apyAllocated,
+                    weightedAverageAPY,
+                };
 
-      // todo vignesh get back the amount from that function and then return it as an amount.
-      //  now you need to return the value, if it's positive, then that's an amount I need to return
-      //  now if it's negative, I have that amount to balance.
-      //  I have a utilisation rate that I need to calculate and redistribute capital to these protocols
-      //  how do i do that? I think If i sort utilization rates descending, then I should have the protocol that I want to allocate to.
+                // Update the total weighted average APY and allocated capital
+                totalWeightedAverageAPY += weightedAverageAPY;
+                totalAllocatedCapital += allocatedCapital;
+            }
 
-      // Risk: Higher utilization rates can indicate that more funds have been borrowed from the protocol. This suggests a higher demand for borrowing and potentially higher usage of the protocol. However, it may also imply a higher risk of default if borrowers are unable to repay their loans. If you prefer a lower risk profile, you might choose the protocol with a lower utilization rate.
-      //
-      // Earnings Stability: Lower utilization rates might suggest that the protocol has more available funds for lending, potentially leading to a more stable earning environment. With lower competition for borrowing, you may have a higher likelihood of consistently earning the stated APR. However, keep in mind that a lower utilization rate may also mean lower overall returns.
-      //
-      // Liquidity and Availability: Higher utilization rates indicate a more active lending and borrowing market within the protocol. This could translate into better liquidity for your deposited funds, making it easier to lend or withdraw when needed. Conversely, a lower utilization rate might mean your funds might be less readily available for borrowing or withdrawal.
-      //
-      // Platform Preferences: Consider any additional features, security measures, user experience, or community reputation associated with each protocol. These factors may influence your decision and should be taken into account alongside utilization rates.
-      //
-      // In summary, when the APRs are the same, it is important to assess your risk tolerance, desired earnings stability, liquidity needs, and platform preferences to determine whether depositing into a protocol with a higher or lower utilization rate aligns better with your objectives.
-      //
-      // Maximise returns by sticking in yield to provide returns. maybe I can just call the functions recursively
-
-      // todo check why aave is not coming up in the protocol names
-
-      // this is only for  if (apyProtocol1 < apyProtocol2) { // todo vignesh add the opposite case
-      // basically, if it's in a rebalance case, if it doesnt cross this threshold, it's just max allocation into max APY lending market
-      if (rebalanceAmount < 0) {
-        // allocate capital in both so that APY is maximal
-        // so let's run it again and get the utilisation rates this time
-        if (apyProtocol1 < apyProtocol2) {
-          // bring down apyProtocol2 to apyprotocol1's level
-          returnObj = calculateApyVariable(protocol2, 'flatten', {
-            amount: capitalDeployed + rebalanceAmount,
-            lowestApy: apyProtocol1,
-            otherProtocol: protocol1,
-          })
-          balancedApyProtocol2 = returnObj.rate
+            // Calculate the running average for each protocol
+            for (const protocol in supplyAPYs[date]) {
+                const { weightedAverageAPY } = allocationLists[date][protocol];
+                runningAverages[date][protocol] = weightedAverageAPY;
+            }
         }
-      }
 
-      // compare
-      console.log(apyProtocol1, apyProtocol2)
-      console.log(balancedApyProtocol1, balancedApyProtocol2)
-      console.log(rebalanceAmount)
-
-      // console.log(returnObj)
-
-      // ideal allocation between the protocols
-      // Current APYs for each protocol
-      // const currentAPYProtocolA = returnObj.rate; // Current APY for Protocol A
-      // const currentAPYProtocolB = returnObj.rate; // Current APY for Protocol B
-      //
-      // // Function to calculate the maximum possible desired APY based on current APYs
-      // function calculateMaxDesiredAPY(currentAPYProtocolA, currentAPYProtocolB, utilizationRateProtocolA, utilizationRateProtocolB) {
-      //     // Calculate the maximum desired APYs based on the current APYs
-      //     const maxDesiredAPYProtocolA = currentAPYProtocolA / utilizationRateProtocolA;
-      //     const maxDesiredAPYProtocolB = currentAPYProtocolB / utilizationRateProtocolB;
-      //
-      //     // Calculate the maximum possible desired APY
-      //     // Return the maximum possible desired APY // todo vignesh
-      //     return Math.min(maxDesiredAPYProtocolA, maxDesiredAPYProtocolB);
-      // }
-      //
-      // // Utilization rates for each protocol
-      // const utilizationRateProtocolA = returnObj.current.utilisationRate; // Utilization rate for Protocol A
-      // const utilizationRateProtocolB = returnObj.obj.otherProtocol.utilisationRate; // Utilization rate for Protocol B
-      //
-      // // Call the function to get the maximum possible desired APY
-      // const maxDesiredAPY = calculateMaxDesiredAPY(currentAPYProtocolA, currentAPYProtocolB, utilizationRateProtocolA, utilizationRateProtocolB);
-
-      // // this is allocation if the total amount is not used, and just the extra amount to balance
-      // // Constants
-      // const currentAPYProtocolA = apyProtocol1; // Current APY for each protocol
-      // const currentAPYProtocolB = apyProtocol2; // Current APY for each protocol
-      // const capitalAvailability = Math.abs(capitalDeployed); // Capital availability towards the total supply
-      // const utilizationRateProtocolA = returnObj.current.utilisationRate; // Utilization rate for Protocol A
-      // const utilizationRateProtocolB = returnObj.obj.otherProtocol.utilisationRate; // Utilization rate for Protocol B
-      // const totalSupplyProtocolA = returnObj.current.supplyUsd; // Total supply for Protocol A
-      // const totalSupplyProtocolB = returnObj.obj.otherProtocol.totalSupplyUsd; // Total supply for Protocol B
-      // const rebalanceCounter = 0;
-      // // const cost
-      //
-      //
-      // // Function to calculate the highest APY and allocation amounts
-      // console.log(apyProtocol1, apyProtocol2)
-      // function calculateHighestAPYAndAllocation(currentAPYProtocolA, currentAPYProtocolB, capitalAvailability, utilizationRateProtocolA, utilizationRateProtocolB, totalSupplyProtocolA, totalSupplyProtocolB) {
-      //     let highestAPY = 0;
-      //     let allocationProtocolA = 0;
-      //     let allocationProtocolB = 0;
-      //
-      //
-      //     for (let amountProtocolA = 0; amountProtocolA <= capitalAvailability; amountProtocolA += 1000) {
-      //         const amountProtocolB = capitalAvailability - amountProtocolA;
-      //         const apyProtocolA = currentAPYProtocolA * (amountProtocolA / (totalSupplyProtocolA * utilizationRateProtocolA));
-      //         const apyProtocolB = currentAPYProtocolB * (amountProtocolB / (totalSupplyProtocolB * utilizationRateProtocolB));
-      //         const totalAPY = apyProtocolA + apyProtocolB;
-      //
-      //         if (totalAPY > highestAPY) {
-      //             highestAPY = totalAPY;
-      //             allocationProtocolA = amountProtocolA;
-      //             allocationProtocolB = amountProtocolB;
-      //             // rebalanceCounter++;
-      //         }
-      //     }
-      //
-      //     // Return the highest APY, allocation amounts, and benchmark APY
-      //     return { highestAPY, allocationProtocolA, allocationProtocolB};
-      // }
-      //
-      // // Call the function to get the highest APY, allocation amounts, and benchmark APY
-      // const result = calculateHighestAPYAndAllocation(currentAPYProtocolA, currentAPYProtocolB, capitalAvailability, utilizationRateProtocolA, utilizationRateProtocolB, totalSupplyProtocolA, totalSupplyProtocolB);
-      //
-      // // Output the results
-      // console.log("Highest APY:", result.highestAPY);
-      // console.log("Allocation for Protocol A:", result.allocationProtocolA);
-      // console.log("Allocation for Protocol B:", result.allocationProtocolB);
-      //
-      // // benchmark calculation
-      // benchmark = (currentAPY, capital, utilizationRate, totalSupply) => {
-      //     const apy = currentAPY * (capital / (totalSupply * utilizationRate));
-      //     return apy;
-      // }
-      // console.log("Benchmark APY (if all capital in one protocol):", benchmark(apyProtocol1>apyProtocol2?apyProtocol1:apyProtocol2, capitalAvailability, apyProtocol1>apyProtocol2?utilizationRateProtocolA:utilizationRateProtocolB, apyProtocol1>apyProtocol2?totalSupplyProtocolA:totalSupplyProtocolB));
-      // console.log('number of times run:', rebalanceCounter)
-      //
-      // // Function used to calculate the above but subtracting gas costs every transaction.
-      //
-      //
-      //
-      //
-      // console.log('------------')
-      // Return the highest APY, allocation amounts, and benchmark APY
-
-      // // const apyProtocol1 = supplyAPYs[date].protocol1.apyBase;
-      // // const apyProtocol2 = supplyAPYs[date].protocol2.apyBase;
-      // const totalAPY = apyProtocol1 + apyProtocol2;
-      // const totalSupplyUsdProtocol1 = supplyAPYs[date].protocol1.totalSupplyUsd;
-      // const totalSupplyUsdProtocol2 = supplyAPYs[date].protocol2.totalSupplyUsd;
-      // const utilizationRateProtocol1 = supplyAPYs[date].protocol1.utilisationRate;
-      // const utilizationRateProtocol2 = supplyAPYs[date].protocol2.utilisationRate;
-      //
-      // if (totalAPY > highestAPY) {
-      //     const allocationRatioProtocol1 = (apyProtocol1 * totalSupplyUsdProtocol1 * utilizationRateProtocol1) / (totalAPY * capitalAvailability);
-      //     const allocationRatioProtocol2 = (apyProtocol2 * totalSupplyUsdProtocol2 * utilizationRateProtocol2) / (totalAPY * capitalAvailability);
-      //     allocationProtocol1 = allocationRatioProtocol1 * capitalAvailability;
-      //     allocationProtocol2 = allocationRatioProtocol2 * capitalAvailability;
-      //     highestAPY = totalAPY;
-      // }
-      //
-      // if (date === Object.keys(supplyAPYs)[Object.keys(supplyAPYs).length - 1]) {
-      //     benchmarkAPY = Math.max(apyProtocol1, apyProtocol2);
-      // }
-      // const apyProtocol1 = supplyAPYs[date].protocol1.apyBase;
-      // const apyProtocol2 = supplyAPYs[date].protocol2.apyBase;
-      const totalSupplyUsdProtocol1 = supplyAPYs[date].protocol1.totalSupplyUsd
-      const totalSupplyUsdProtocol2 = supplyAPYs[date].protocol2.totalSupplyUsd
-
-      // Calculate the allocation ratios for Protocol 1 and Protocol 2
-      const allocationRatioProtocol1 =
-        (apyProtocol1 * totalSupplyUsdProtocol1) /
-        (apyProtocol1 * totalSupplyUsdProtocol1 +
-          apyProtocol2 * totalSupplyUsdProtocol2)
-      const allocationRatioProtocol2 =
-        (apyProtocol2 * totalSupplyUsdProtocol2) /
-        (apyProtocol1 * totalSupplyUsdProtocol1 +
-          apyProtocol2 * totalSupplyUsdProtocol2)
-
-      // Calculate the weighted average APY
-      const weightedAverageAPY =
-        allocationRatioProtocol1 * apyProtocol1 +
-        allocationRatioProtocol2 * apyProtocol2
-
-      // Check if the weighted average APY is higher than the previous highest
-      if (weightedAverageAPY > highestWeightedAverageAPY) {
-        highestWeightedAverageAPY = weightedAverageAPY
-        bestAllocation = [
-          {
-            protocol: 'protocol1',
-            allocation: allocationRatioProtocol1 * capitalAvailability,
-          },
-          {
-            protocol: 'protocol2',
-            allocation: allocationRatioProtocol2 * capitalAvailability,
-          },
-        ]
-      }
-      // Add allocation and APY to the list
-      allocationList.push({
-        date,
-        allocationProtocol1: allocationRatioProtocol1 * capitalAvailability,
-        allocationProtocol2: allocationRatioProtocol2 * capitalAvailability,
-        apyProtocol1,
-        apyProtocol2,
-      })
-
-      // Calculate APY if all capital is deployed in protocol1
-      if (allocationRatioProtocol1 === 1) {
-        apyAllCapitalInProtocol1 = apyProtocol1
-      }
+        // Return the allocation lists and running averages
+        return { allocationLists, runningAverages };
     }
-
-    // Return the highest weighted average APY, best allocation, and allocation list
-    return {
-      highestWeightedAverageAPY,
-      bestAllocation,
-      allocationList,
-      apyAllCapitalInProtocol1,
-    }
-  }
 
   // Constants
-  const capitalAvailability = 20000000 // Capital availability towards the total supply
+  const capitalAvailability = 2000000 // Capital availability towards the total supply
 
-  // Call the function to get the highest weighted average APY, best allocation, and allocation list
-  result = calculateHighestAPYAndAllocation(supplyAPYs, capitalAvailability)
+    // Call the function to get the allocation lists and running averages
+    const result = calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability);
 
-  // Output the results
-  console.log('Highest Weighted Average APY:', result.highestWeightedAverageAPY)
-  console.log('Best Allocation:')
-  result.bestAllocation.forEach(({ protocol, allocation, apy }) => {
-    console.log(`${protocol}: Allocation - ${allocation}, APY - ${apy}`)
-  })
-  console.log('Allocation List:')
-  result.allocationList.forEach(
-    ({
-      date,
-      allocationProtocol1,
-      allocationProtocol2,
-      apyProtocol1,
-      apyProtocol2,
-    }) => {
-      console.log(`Date: ${date}`)
-      console.log(
-        `Protocol 1: Allocation - ${allocationProtocol1}, APY - ${apyProtocol1}`
-      )
-      console.log(
-        `Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`
-      )
-    }
-  )
-  // // benchmark calculation
-  // benchmark = (currentAPY, capital, utilizationRate, totalSupply) => {
-  //     const apy = currentAPY * (capital / (totalSupply * utilizationRate));
-  //     return apy;
-  // }
-  // console.log("Benchmark APY (if all capital in one protocol):", benchmark(apyProtocol1>apyProtocol2?apyProtocol1:apyProtocol2, capitalAvailability, apyProtocol1>apyProtocol2?utilizationRateProtocolA:utilizationRateProtocolB, apyProtocol1>apyProtocol2?totalSupplyProtocolA:totalSupplyProtocolB));
-  // console.log('number of times run:', rebalanceCounter)
-
-  // Function used to calculate the above but subtracting gas costs every transaction.
-
-  // todo vignesh change it so that it has the lowest amount of capital allocated to it
-  // Function to calculate the weighted average APY, allocation list, and running average
-  // Function to calculate the weighted average APY, allocation list, and running average
-  function calculateWeightedAverageAPYAndAllocation(
-    supplyAPYs,
-    capitalAvailability
-  ) {
-    const allocationList = []
-    let runningSum = 0
-    let count = 0
-    const adjustedYearlyReturnsList = []
-
-    for (const date in supplyAPYs) {
-      const apyProtocol1 = supplyAPYs[date].protocol1.apyBase
-      const apyProtocol2 = supplyAPYs[date].protocol2.apyBase
-      const totalSupplyUsdProtocol1 = supplyAPYs[date].protocol1.totalSupplyUsd
-      const totalSupplyUsdProtocol2 = supplyAPYs[date].protocol2.totalSupplyUsd
-      const gasUsedProtocol1 = supplyAPYs[date].protocol1.gasUsed
-      const gasUsedProtocol2 = supplyAPYs[date].protocol2.gasUsed
-      const ethToUsdProtocol1 = supplyAPYs[date].protocol1.ethToUsd
-      const ethToUsdProtocol2 = supplyAPYs[date].protocol2.ethToUsd
-
-      // Calculate the allocation ratios for Protocol 1 and Protocol 2
-      const allocationRatioProtocol1 =
-        (apyProtocol1 * totalSupplyUsdProtocol1) /
-        (apyProtocol1 * totalSupplyUsdProtocol1 +
-          apyProtocol2 * totalSupplyUsdProtocol2)
-      const allocationRatioProtocol2 =
-        (apyProtocol2 * totalSupplyUsdProtocol2) /
-        (apyProtocol1 * totalSupplyUsdProtocol1 +
-          apyProtocol2 * totalSupplyUsdProtocol2)
-
-      // Calculate the adjusted yearly returns by subtracting the fixed cost for each protocol
-      const adjusted_yearly_returns_protocol1 =
-        (apyProtocol1 - gasUsedProtocol1 * ethToUsdProtocol1) *
-        allocationRatioProtocol1
-      const adjusted_yearly_returns_protocol2 =
-        (apyProtocol2 - gasUsedProtocol2 * ethToUsdProtocol2) *
-        allocationRatioProtocol2
-
-      adjustedYearlyReturnsList.push({
-        protocol1: adjusted_yearly_returns_protocol1,
-        protocol2: adjusted_yearly_returns_protocol2,
-      })
-
-      // Calculate the weighted average APY using the adjusted yearly returns if they are positive, otherwise use the original yearly returns
-      const weightedAverageAPY =
-        adjusted_yearly_returns_protocol1 >= 0 &&
-        adjusted_yearly_returns_protocol2 >= 0
-          ? adjusted_yearly_returns_protocol1 * allocationRatioProtocol1 +
-            adjusted_yearly_returns_protocol2 * allocationRatioProtocol2
-          : apyProtocol1 * allocationRatioProtocol1 +
-            apyProtocol2 * allocationRatioProtocol2
-
-      // Add allocation and APY to the list
-      allocationList.push({
-        date,
-        allocationProtocol1: allocationRatioProtocol1 * capitalAvailability,
-        allocationProtocol2: allocationRatioProtocol2 * capitalAvailability,
-        apyProtocol1,
-        apyProtocol2,
-      })
-
-      // Update the running sum only if the adjusted yearly returns for both protocols are positive
-      if (
-        adjusted_yearly_returns_protocol1 >= 0 &&
-        adjusted_yearly_returns_protocol2 >= 0
-      ) {
-        runningSum += weightedAverageAPY
-        count++
-      }
+// Output the allocation lists and running averages
+    for (const date in result.allocationLists) {
+        console.log(`Allocation List (${date}):`);
+        const allocationList = result.allocationLists[date];
+        for (const protocol in allocationList) {
+            console.log(`Protocol: ${protocol}`);
+            console.log(allocationList[protocol]);
+        }
+        console.log(`Running Averages (${date}):`);
+        const runningAverage = result.runningAverages[date];
+        for (const protocol in runningAverage) {
+            console.log(`Protocol: ${protocol}`);
+            console.log(`Running Average: ${runningAverage[protocol]}`);
+        }
+        console.log();
     }
 
-    // Calculate the running average
-    const runningAverage = count > 0 ? runningSum / count : 0
+// Calculate the average of all the running averages
+    let sumOfRunningAverages = 0;
+    let count = 0;
 
-    // Return the allocation list, running average, and adjusted yearly returns list
-    return { allocationList, runningAverage, adjustedYearlyReturnsList }
-  }
-
-  // Call the function to get the weighted average APY, allocation list, and running average
-  result = calculateWeightedAverageAPYAndAllocation(
-    supplyAPYs,
-    capitalAvailability
-  )
-
-  // Output the results
-  console.log('Allocation List:')
-  result.allocationList.forEach(
-    ({
-      date,
-      allocationProtocol1,
-      allocationProtocol2,
-      apyProtocol1,
-      apyProtocol2,
-    }) => {
-      console.log(`Date: ${date}`)
-      console.log(
-        `Protocol 1: Allocation - ${allocationProtocol1}, APY - ${apyProtocol1}`
-      )
-      console.log(
-        `Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`
-      )
-    }
-  )
-  console.log('Running Average For Combined:', result.runningAverage)
-  // console.log("Adjusted Daily Returns List:", result.adjustedDailyReturnsList);
-
-  // Function to calculate the weighted average APY, allocation list, and running average
-  // Function to calculate the weighted average APY, allocation list, and running average
-  function calculateWeightedAverageAPYAndAllocation2(
-    supplyAPYs,
-    capitalAvailability
-  ) {
-    const allocationListProtocol1 = []
-    const allocationListProtocol2 = []
-    let runningAverageProtocol1 = 0
-    let runningAverageProtocol2 = 0
-    let count = 0
-
-    for (const date in supplyAPYs) {
-      const apyProtocol1 = supplyAPYs[date].protocol1.apyBase
-      const apyProtocol2 = supplyAPYs[date].protocol2.apyBase
-      const totalSupplyUsdProtocol1 = supplyAPYs[date].protocol1.totalSupplyUsd
-      const totalSupplyUsdProtocol2 = supplyAPYs[date].protocol2.totalSupplyUsd
-
-      // Allocate capital to protocols
-      const allocatedCapitalProtocol1 =
-        ((apyProtocol1 * totalSupplyUsdProtocol1) /
-          (apyProtocol1 * totalSupplyUsdProtocol1 +
-            apyProtocol2 * totalSupplyUsdProtocol2)) *
-        capitalAvailability
-      const allocatedCapitalProtocol2 =
-        ((apyProtocol2 * totalSupplyUsdProtocol2) /
-          (apyProtocol1 * totalSupplyUsdProtocol1 +
-            apyProtocol2 * totalSupplyUsdProtocol2)) *
-        capitalAvailability
-
-      // Recalculate APYs based on allocated capital
-      const apyProtocol1Allocated =
-        (apyProtocol1 * totalSupplyUsdProtocol1) /
-        (totalSupplyUsdProtocol1 + allocatedCapitalProtocol1)
-      const apyProtocol2Allocated =
-        (apyProtocol2 * totalSupplyUsdProtocol2) /
-        (totalSupplyUsdProtocol2 + allocatedCapitalProtocol2)
-
-      // Calculate the weighted average APY
-      const weightedAverageAPYProtocol1 =
-        (apyProtocol1Allocated * allocatedCapitalProtocol1) /
-        capitalAvailability
-      const weightedAverageAPYProtocol2 =
-        (apyProtocol2Allocated * allocatedCapitalProtocol2) /
-        capitalAvailability
-
-      // Add allocation and APY to the lists
-      allocationListProtocol1.push({
-        date,
-        allocationProtocol1: allocatedCapitalProtocol1,
-        allocationProtocol2: allocatedCapitalProtocol2,
-        apyProtocol1: apyProtocol1Allocated,
-        apyProtocol2: apyProtocol2Allocated,
-      })
-
-      allocationListProtocol2.push({
-        date,
-        allocationProtocol1: 0,
-        allocationProtocol2: capitalAvailability,
-        apyProtocol1: 0,
-        apyProtocol2: apyProtocol2,
-      })
-
-      // Update the running averages
-      runningAverageProtocol1 =
-        (runningAverageProtocol1 * count + weightedAverageAPYProtocol1) /
-        (count + 1)
-      runningAverageProtocol2 =
-        (runningAverageProtocol2 * count + weightedAverageAPYProtocol2) /
-        (count + 1)
-      count++
+    for (const date in result.runningAverages) {
+        const runningAverage = result.runningAverages[date];
+        for (const protocol in runningAverage) {
+            sumOfRunningAverages += runningAverage[protocol];
+            count++;
+        }
     }
 
-    // Return the allocation lists and running averages
-    return {
-      allocationListProtocol1,
-      allocationListProtocol2,
-      runningAverageProtocol1,
-      runningAverageProtocol2,
-    }
-  }
-
-  // Call the function to get the weighted average APY, allocation lists, and running averages
-  result = calculateWeightedAverageAPYAndAllocation2(
-    supplyAPYs,
-    capitalAvailability
-  )
-
-  // Output the results for allocation towards Protocol 1
-  //     console.log("Allocation List (Protocol 1):");
-  //     result.allocationListProtocol1.forEach(({ date, allocationProtocol1, allocationProtocol2, apyProtocol1, apyProtocol2 }) => {
-  //         console.log(`Date: ${date}`);
-  //         console.log(`Protocol 1: Allocation - ${allocationProtocol1}, APY - ${apyProtocol1}`);
-  //         console.log(`Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`);
-  //     });
-  //     console.log("Running Average (Protocol 1):", result.runningAverageProtocol1);
-
-  // Output the results for allocation towards Protocol 2
-  //     console.log("Allocation List (Protocol 2):");
-  //     result.allocationListProtocol2.forEach(({ date, allocationProtocol1, allocationProtocol2, apyProtocol1, apyProtocol2 }) => {
-  //         console.log(`Date: ${date}`);
-  //         console.log(`Protocol 1: Allocation - ${allocationProtocol1}, APY - ${apyProtocol1}`);
-  //         console.log(`Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`);
-  //     });
-  console.log('Running Average (Protocol 2):', result.runningAverageProtocol2)
-
-  // Output the results
-  //     console.log("Protocol 1 Allocation List:");
-  //     result.allocationListProtocol1.forEach(({ date, allocationProtocol1, apyProtocol1 }) => {
-  //         console.log(`Date: ${date}`);
-  //         console.log(`Protocol 1: Allocation - ${allocationProtocol1}, APY - ${apyProtocol1}`);
-  //     });
-  //
-  //     console.log("Protocol 2 Allocation List:");
-  //     result.allocationListProtocol2.forEach(({ date, allocationProtocol2, apyProtocol2 }) => {
-  //         console.log(`Date: ${date}`);
-  //         console.log(`Protocol 2: Allocation - ${allocationProtocol2}, APY - ${apyProtocol2}`);
-  //     });
+    const averageRunningAverage = sumOfRunningAverages / count;
+    console.log(`Average of all running averages: ${averageRunningAverage}`);
 
   // todo vignesh
   // add more deferential possibilities for different periods. Daily, weekly, monthly.
+
+
 
   console.log('------------')
 })()
