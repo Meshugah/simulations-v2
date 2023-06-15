@@ -697,20 +697,7 @@ function findObjectByTimestamp(obj, timestamp) {
 })();
 
 
-// add costs for each transactions. So I've got gas fees for everything. At a per calculation level. I need to subtract the APY for the gas. and get the overall from that. and also probably need to define a threshold above which you do not need to do rebalances.
-// i feel like i should calculate the daily apy and then that is my daily threshold.
-// I need to figure out what would make this deposit size independent.
 
-// gas for deposit = gas for approve to LendingPool + gas for deposit transasction = 300k
-// gas for redeem = 600k
-
-// redeem = 95058
-// first mint = 124570
-
-// i need to have a style for determining deposits vs withdrawals, and then by doing that i can find
-// I'm just gonna have an average for them that i use.
-
-// i need the historical wei to usd as well
 
 // so for aave
 // withdrawal
@@ -743,11 +730,3 @@ function findObjectByTimestamp(obj, timestamp) {
 // https://etherscan.io/txs?a=0x39AA39c021dfbaE8faC545936693aC917d5E7563&p=300
 
 
-// okay so today, I need to get the gas for a chain from wei to usd. Just do eth, save that to a file, merge with the existing list for both protocols.
-// run it, see if it's still higher than the rest. And if it's not. Then do the to do above. I honestly hope it's positive irrespective. but we'll see.
-
-// calculate more defer
-
-
-
-// add transaction fees together, get the highest sum of it and try and rebalance it.
