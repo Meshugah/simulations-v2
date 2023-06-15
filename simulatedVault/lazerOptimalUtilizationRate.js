@@ -254,6 +254,7 @@ function findObjectByTimestamp(obj, timestamp) {
 
   // console.log(Object.keys(supplyAPYs).length)
 
+    // Function to calculate the weighted average APY, allocation list, running average, and adjusted yearly returns list
     // Function to calculate the weighted average APY, allocation list, and running average
     function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability) {
         let allocationLists = {};
@@ -266,43 +267,37 @@ function findObjectByTimestamp(obj, timestamp) {
             let totalWeightedAverageAPY = 0;
             let totalAllocatedCapital = 0;
 
-            // Calculate the denominator for the allocation formula
-            let denominator = 0;
             for (const protocol in supplyAPYs[date]) {
                 const apyBase = supplyAPYs[date][protocol].apyBase;
                 const totalSupplyUsd = supplyAPYs[date][protocol].totalSupplyUsd;
-                denominator += apyBase * totalSupplyUsd;
-            }
+                const gasUsed = supplyAPYs[date][protocol].gasUsed;
+                const ethToUsd = supplyAPYs[date][protocol].ethToUsd;
 
-            for (const protocol in supplyAPYs[date]) {
-                const apyBase = supplyAPYs[date][protocol].apyBase;
-                const totalSupplyUsd = supplyAPYs[date][protocol].totalSupplyUsd;
+                // Calculate the allocation ratio for the protocol
+                const allocationRatio = (apyBase * totalSupplyUsd) / Object.values(supplyAPYs[date]).reduce((sum, p) => sum + (p.apyBase * p.totalSupplyUsd), 0);
 
-                // Allocate capital to the protocol
-                const allocatedCapital = (apyBase * totalSupplyUsd) / denominator * capitalAvailability;
+                // Allocate capital to the protocol based on the allocation ratio
+                const allocatedCapital = allocationRatio * capitalAvailability;
 
-                // Recalculate APY based on allocated capital
-                const apyAllocated = apyBase * totalSupplyUsd / (totalSupplyUsd + allocatedCapital);
+                // Calculate the adjusted APY by subtracting the gas cost
+                const adjustedAPY = (apyBase * totalSupplyUsd - gasUsed * ethToUsd) / (totalSupplyUsd + allocatedCapital);
 
                 // Calculate the weighted average APY
-                const weightedAverageAPY = (apyAllocated * allocatedCapital) / capitalAvailability;
+                const weightedAverageAPY = (adjustedAPY * allocatedCapital) / capitalAvailability;
 
                 // Add allocation to the allocation list
                 allocationLists[date][protocol] = {
                     allocatedCapital,
-                    apyAllocated,
+                    adjustedAPY,
                     weightedAverageAPY,
                 };
 
                 // Update the total weighted average APY and allocated capital
                 totalWeightedAverageAPY += weightedAverageAPY;
                 totalAllocatedCapital += allocatedCapital;
-            }
 
-            // Calculate the running average for each protocol
-            for (const protocol in supplyAPYs[date]) {
-                const { weightedAverageAPY } = allocationLists[date][protocol];
-                runningAverages[date][protocol] = weightedAverageAPY;
+                // Calculate the running average for the current protocol
+                runningAverages[date][protocol] = totalWeightedAverageAPY / totalAllocatedCapital;
             }
         }
 
@@ -348,12 +343,81 @@ function findObjectByTimestamp(obj, timestamp) {
     const averageRunningAverage = sumOfRunningAverages / count;
     console.log(`Average of all running averages: ${averageRunningAverage}`);
 
+// Calculate the final APY using the final running averages and allocations
+    let finalAPY = 0;
+    let totalAllocatedCapital = 0;
+
+    for (const date in result.allocationLists) {
+        const allocationList = result.allocationLists[date];
+        for (const protocol in allocationList) {
+            const { weightedAverageAPY, allocatedCapital } = allocationList[protocol];
+            finalAPY += weightedAverageAPY * allocatedCapital;
+            totalAllocatedCapital += allocatedCapital;
+        }
+    }
+
+    finalAPY /= totalAllocatedCapital;
+
+    console.log(`Final APY: ${finalAPY}`);
+
   // todo vignesh
   // add more deferential possibilities for different periods. Daily, weekly, monthly.
+    function getProtocolWithHighestAPYSum(supplyAPYs) {
+        let highestSum = 0;
+        let protocolWithHighestSum = '';
+
+        for (const date in supplyAPYs) {
+            const protocols = Object.keys(supplyAPYs[date]);
+            let sum = 0;
+
+            for (const protocol of protocols) {
+                const apy = supplyAPYs[date][protocol].apyBase;
+                sum += apy;
+            }
+
+            if (sum > highestSum) {
+                highestSum = sum;
+                protocolWithHighestSum = protocols[0];
+            }
+        }
+
+        return protocolWithHighestSum;
+    }
+
+    function calculateAPY(protocolName, supplyAPYs, capitalAvailability) {
+        let sumAPY = 0;
+        let count = 0;
+
+        for (const date in supplyAPYs) {
+            const apy = supplyAPYs[date][protocolName].apyBase;
+            const totalSupplyUsd = supplyAPYs[date][protocolName].totalSupplyUsd;
+
+            // Calculate the allocated capital
+            const allocatedCapital = capitalAvailability * count;
+
+            // Recalculate APY based on allocated capital
+            const apyAllocated =
+                (apy * totalSupplyUsd) / (totalSupplyUsd + allocatedCapital);
+
+            sumAPY += apyAllocated;
+            count++;
+        }
+
+        const averageAPY = sumAPY / count;
+
+        return {
+            protocol: protocolName,
+            averageAPY: averageAPY,
+        };
+    }
+
+    const protocolWithHighestAPYSum = getProtocolWithHighestAPYSum(supplyAPYs);
+    const benchmark = calculateAPY(protocolWithHighestAPYSum, supplyAPYs, capitalAvailability);
+    console.log(benchmark);
 
 
 
-  console.log('------------')
+    console.log('------------')
 })()
 
 // so for aave
