@@ -256,6 +256,7 @@ function findObjectByTimestamp(obj, timestamp) {
 
     // Function to calculate the weighted average APY, allocation list, running average, and adjusted yearly returns list
     // Function to calculate the weighted average APY, allocation list, and running average
+    // Function to calculate the weighted average APY, allocation list, and running average
     function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability) {
         let allocationLists = {};
         let runningAverages = {};
@@ -270,34 +271,32 @@ function findObjectByTimestamp(obj, timestamp) {
             for (const protocol in supplyAPYs[date]) {
                 const apyBase = supplyAPYs[date][protocol].apyBase;
                 const totalSupplyUsd = supplyAPYs[date][protocol].totalSupplyUsd;
-                const gasUsed = supplyAPYs[date][protocol].gasUsed;
-                const ethToUsd = supplyAPYs[date][protocol].ethToUsd;
 
                 // Calculate the allocation ratio for the protocol
                 const allocationRatio = (apyBase * totalSupplyUsd) / Object.values(supplyAPYs[date]).reduce((sum, p) => sum + (p.apyBase * p.totalSupplyUsd), 0);
 
-                // Allocate capital to the protocol based on the allocation ratio
+                // Calculate the allocated capital for the protocol
                 const allocatedCapital = allocationRatio * capitalAvailability;
 
-                // Calculate the adjusted APY by subtracting the gas cost
-                const adjustedAPY = (apyBase * totalSupplyUsd - gasUsed * ethToUsd) / (totalSupplyUsd + allocatedCapital);
-
                 // Calculate the weighted average APY
-                const weightedAverageAPY = (adjustedAPY * allocatedCapital) / capitalAvailability;
+                const weightedAverageAPY = (apyBase * allocatedCapital) / capitalAvailability;
 
                 // Add allocation to the allocation list
                 allocationLists[date][protocol] = {
                     allocatedCapital,
-                    adjustedAPY,
+                    apyBase,
                     weightedAverageAPY,
                 };
 
                 // Update the total weighted average APY and allocated capital
                 totalWeightedAverageAPY += weightedAverageAPY;
                 totalAllocatedCapital += allocatedCapital;
+            }
 
-                // Calculate the running average for the current protocol
-                runningAverages[date][protocol] = totalWeightedAverageAPY / totalAllocatedCapital;
+            // Calculate the running average for each protocol
+            for (const protocol in supplyAPYs[date]) {
+                const { weightedAverageAPY } = allocationLists[date][protocol];
+                runningAverages[date][protocol] = weightedAverageAPY / totalWeightedAverageAPY;
             }
         }
 
@@ -305,7 +304,8 @@ function findObjectByTimestamp(obj, timestamp) {
         return { allocationLists, runningAverages };
     }
 
-  // Constants
+
+    // Constants
   const capitalAvailability = 2000000 // Capital availability towards the total supply
 
     // Call the function to get the allocation lists and running averages
@@ -328,20 +328,6 @@ function findObjectByTimestamp(obj, timestamp) {
         console.log();
     }
 
-// Calculate the average of all the running averages
-    let sumOfRunningAverages = 0;
-    let count = 0;
-
-    for (const date in result.runningAverages) {
-        const runningAverage = result.runningAverages[date];
-        for (const protocol in runningAverage) {
-            sumOfRunningAverages += runningAverage[protocol];
-            count++;
-        }
-    }
-
-    const averageRunningAverage = sumOfRunningAverages / count;
-    console.log(`Average of all running averages: ${averageRunningAverage}`);
 
 // Calculate the final APY using the final running averages and allocations
     let finalAPY = 0;
