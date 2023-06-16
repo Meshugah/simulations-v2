@@ -183,6 +183,7 @@ function findObjectByTimestamp(obj, timestamp) {
   // Get Historic Data from saved file
   protocol1File = require('./aaveData')
   protocol2File = require('./compoundData')
+  protocol3File = require('./eulerData')
   // todo vignesh this needs to move to a multi chain format.
   gasFile = require('./gasDataEth.json')
   ethToUsdFile = require('./ethToUsd.json')
@@ -190,6 +191,7 @@ function findObjectByTimestamp(obj, timestamp) {
   // format data into only categories we require
   protocol1 = formatApiRequest(protocol1File.data, 'aave', 'usdc') // todo change to accept pools
   protocol2 = formatApiRequest(protocol2File.data, 'compound', 'usdc')
+    protocol3 = formatApiRequest(protocol3File.data, 'euler', 'usdc')
 
   // console.log(protocol1)
   // console.log(protocol2)
@@ -256,6 +258,7 @@ function findObjectByTimestamp(obj, timestamp) {
 
     // Function to calculate the weighted average APY, allocation list, running average, and adjusted yearly returns list
     // Function to calculate the weighted average APY, allocation list, and running average
+    // Function to calculate the weighted average APY, allocation list, and running average
     function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability) {
         let allocationLists = {};
         let runningAverages = {};
@@ -270,34 +273,32 @@ function findObjectByTimestamp(obj, timestamp) {
             for (const protocol in supplyAPYs[date]) {
                 const apyBase = supplyAPYs[date][protocol].apyBase;
                 const totalSupplyUsd = supplyAPYs[date][protocol].totalSupplyUsd;
-                const gasUsed = supplyAPYs[date][protocol].gasUsed;
-                const ethToUsd = supplyAPYs[date][protocol].ethToUsd;
 
                 // Calculate the allocation ratio for the protocol
                 const allocationRatio = (apyBase * totalSupplyUsd) / Object.values(supplyAPYs[date]).reduce((sum, p) => sum + (p.apyBase * p.totalSupplyUsd), 0);
 
-                // Allocate capital to the protocol based on the allocation ratio
+                // Calculate the allocated capital for the protocol
                 const allocatedCapital = allocationRatio * capitalAvailability;
 
-                // Calculate the adjusted APY by subtracting the gas cost
-                const adjustedAPY = (apyBase * totalSupplyUsd - gasUsed * ethToUsd) / (totalSupplyUsd + allocatedCapital);
-
                 // Calculate the weighted average APY
-                const weightedAverageAPY = (adjustedAPY * allocatedCapital) / capitalAvailability;
+                const weightedAverageAPY = (apyBase * allocatedCapital) / capitalAvailability;
 
                 // Add allocation to the allocation list
                 allocationLists[date][protocol] = {
                     allocatedCapital,
-                    adjustedAPY,
+                    apyBase,
                     weightedAverageAPY,
                 };
 
                 // Update the total weighted average APY and allocated capital
                 totalWeightedAverageAPY += weightedAverageAPY;
                 totalAllocatedCapital += allocatedCapital;
+            }
 
-                // Calculate the running average for the current protocol
-                runningAverages[date][protocol] = totalWeightedAverageAPY / totalAllocatedCapital;
+            // Calculate the running average for each protocol
+            for (const protocol in supplyAPYs[date]) {
+                const { weightedAverageAPY } = allocationLists[date][protocol];
+                runningAverages[date][protocol] = weightedAverageAPY / totalWeightedAverageAPY;
             }
         }
 
@@ -305,7 +306,8 @@ function findObjectByTimestamp(obj, timestamp) {
         return { allocationLists, runningAverages };
     }
 
-  // Constants
+
+    // Constants
   const capitalAvailability = 2000000 // Capital availability towards the total supply
 
     // Call the function to get the allocation lists and running averages
@@ -328,20 +330,6 @@ function findObjectByTimestamp(obj, timestamp) {
         console.log();
     }
 
-// Calculate the average of all the running averages
-    let sumOfRunningAverages = 0;
-    let count = 0;
-
-    for (const date in result.runningAverages) {
-        const runningAverage = result.runningAverages[date];
-        for (const protocol in runningAverage) {
-            sumOfRunningAverages += runningAverage[protocol];
-            count++;
-        }
-    }
-
-    const averageRunningAverage = sumOfRunningAverages / count;
-    console.log(`Average of all running averages: ${averageRunningAverage}`);
 
 // Calculate the final APY using the final running averages and allocations
     let finalAPY = 0;
@@ -362,60 +350,66 @@ function findObjectByTimestamp(obj, timestamp) {
 
   // todo vignesh
   // add more deferential possibilities for different periods. Daily, weekly, monthly.
-    function getProtocolWithHighestAPYSum(supplyAPYs) {
-        let highestSum = 0;
-        let protocolWithHighestSum = '';
 
-        for (const date in supplyAPYs) {
-            const protocols = Object.keys(supplyAPYs[date]);
-            let sum = 0;
 
-            for (const protocol of protocols) {
-                const apy = supplyAPYs[date][protocol].apyBase;
-                sum += apy;
-            }
 
-            if (sum > highestSum) {
-                highestSum = sum;
-                protocolWithHighestSum = protocols[0];
-            }
-        }
 
-        return protocolWithHighestSum;
-    }
 
-    function calculateAPY(protocolName, supplyAPYs, capitalAvailability) {
-        let sumAPY = 0;
+
+
+    function calculateWeightedAverageAPYAndAllocation2(supplyAPYs, capitalAvailability) {
+        let allocationListProtocol1 = [];
+        let allocationListProtocol2 = [];
+        let runningAverageProtocol1 = 0;
+        let runningAverageProtocol2 = 0;
         let count = 0;
 
         for (const date in supplyAPYs) {
-            const apy = supplyAPYs[date][protocolName].apyBase;
-            const totalSupplyUsd = supplyAPYs[date][protocolName].totalSupplyUsd;
+            const apyProtocol1 = supplyAPYs[date].protocol1.apyBase;
+            const apyProtocol2 = supplyAPYs[date].protocol2.apyBase;
+            const totalSupplyUsdProtocol1 = supplyAPYs[date].protocol1.totalSupplyUsd;
+            const totalSupplyUsdProtocol2 = supplyAPYs[date].protocol2.totalSupplyUsd;
 
-            // Calculate the allocated capital
-            const allocatedCapital = capitalAvailability * count;
+            // Allocate capital to protocols
+            const allocatedCapitalProtocol1 = (apyProtocol1 * totalSupplyUsdProtocol1) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2) * capitalAvailability;
+            const allocatedCapitalProtocol2 = (apyProtocol2 * totalSupplyUsdProtocol2) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2) * capitalAvailability;
 
-            // Recalculate APY based on allocated capital
-            const apyAllocated =
-                (apy * totalSupplyUsd) / (totalSupplyUsd + allocatedCapital);
+            // Recalculate APYs based on allocated capital
+            const apyProtocol1Allocated = apyProtocol1 * totalSupplyUsdProtocol1 / (totalSupplyUsdProtocol1 + allocatedCapitalProtocol1);
+            const apyProtocol2Allocated = apyProtocol2 * totalSupplyUsdProtocol2 / (totalSupplyUsdProtocol2 + allocatedCapitalProtocol2);
 
-            sumAPY += apyAllocated;
+            // Calculate the weighted average APY
+            const weightedAverageAPYProtocol1 = (apyProtocol1Allocated * allocatedCapitalProtocol1) / capitalAvailability;
+            const weightedAverageAPYProtocol2 = (apyProtocol2Allocated * allocatedCapitalProtocol2) / capitalAvailability;
+
+            // Add allocation and APY to the lists
+            allocationListProtocol1.push({
+                date,
+                allocationProtocol1: allocatedCapitalProtocol1,
+                allocationProtocol2: allocatedCapitalProtocol2,
+                apyProtocol1: apyProtocol1Allocated,
+                apyProtocol2: apyProtocol2Allocated,
+            });
+
+            allocationListProtocol2.push({
+                date,
+                allocationProtocol1: 0,
+                allocationProtocol2: capitalAvailability,
+                apyProtocol1: 0,
+                apyProtocol2: apyProtocol2,
+            });
+
+            // Update the running averages
+            runningAverageProtocol1 = (runningAverageProtocol1 * count + weightedAverageAPYProtocol1) / (count + 1);
+            runningAverageProtocol2 = (runningAverageProtocol2 * count + weightedAverageAPYProtocol2) / (count + 1);
             count++;
         }
 
-        const averageAPY = sumAPY / count;
-
-        return {
-            protocol: protocolName,
-            averageAPY: averageAPY,
-        };
+        // Return the allocation lists and running averages
+        return { allocationListProtocol1, allocationListProtocol2, runningAverageProtocol1, runningAverageProtocol2 };
     }
-
-    const protocolWithHighestAPYSum = getProtocolWithHighestAPYSum(supplyAPYs);
-    const benchmark = calculateAPY(protocolWithHighestAPYSum, supplyAPYs, capitalAvailability);
-    console.log(benchmark);
-
-
+    result2 = calculateWeightedAverageAPYAndAllocation2(supplyAPYs, capitalAvailability);
+    console.log("Running Average (Protocol 2):", result2.runningAverageProtocol2);
 
     console.log('------------')
 })()
