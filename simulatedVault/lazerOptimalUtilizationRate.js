@@ -266,19 +266,18 @@ function findObjectByTimestamp(obj, timestamp) {
         }
     }
 
-// Print the result
-    console.log(supplyAPYs);
-
   // console.log(Object.keys(supplyAPYs).length)
 
     // Function to calculate the weighted average APY, allocation list, and running average
     function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability) {
         let allocationLists = {};
         let runningAverages = {};
+        let adjustedYearlyReturnsList = {};
 
         for (const date in supplyAPYs) {
             allocationLists[date] = {};
             runningAverages[date] = {};
+            adjustedYearlyReturnsList[date] = {};
 
             let totalWeightedAverageAPY = 0;
             let totalAllocatedCapital = 0;
@@ -286,6 +285,8 @@ function findObjectByTimestamp(obj, timestamp) {
             for (const protocol in supplyAPYs[date]) {
                 const apyBase = supplyAPYs[date][protocol].apyBase;
                 const totalSupplyUsd = supplyAPYs[date][protocol].totalSupplyUsd;
+                const gasUsed = supplyAPYs[date][protocol].gasUsed;
+                const ethToUsd = supplyAPYs[date][protocol].ethToUsd;
 
                 // Calculate the allocation ratio for the protocol
                 const allocationRatio = (apyBase * totalSupplyUsd) / Object.values(supplyAPYs[date]).reduce((sum, p) => sum + (p.apyBase * p.totalSupplyUsd), 0);
@@ -293,10 +294,13 @@ function findObjectByTimestamp(obj, timestamp) {
                 // Calculate the allocated capital for the protocol
                 const allocatedCapital = allocationRatio * capitalAvailability;
 
-                // Calculate the weighted average APY
-                const weightedAverageAPY = (apyBase * allocatedCapital) / capitalAvailability;
+                // Calculate the adjusted yearly returns by subtracting the gas cost for the protocol
+                const adjustedYearlyReturns = (apyBase - (gasUsed * ethToUsd)) * allocationRatio;
 
-                // Add allocation to the allocation list
+                // Calculate the weighted average APY
+                const weightedAverageAPY = adjustedYearlyReturns >= 0 ? adjustedYearlyReturns : apyBase;
+
+                // Add allocation and APY to the allocation list
                 allocationLists[date][protocol] = {
                     allocatedCapital,
                     apyBase,
@@ -313,11 +317,15 @@ function findObjectByTimestamp(obj, timestamp) {
                 const { weightedAverageAPY } = allocationLists[date][protocol];
                 runningAverages[date][protocol] = weightedAverageAPY / totalWeightedAverageAPY;
             }
+
+            // Add adjusted yearly returns to the list
+            adjustedYearlyReturnsList[date] = allocationLists[date];
         }
 
-        // Return the allocation lists and running averages
-        return { allocationLists, runningAverages };
+        // Return the allocation lists, running averages, and adjusted yearly returns list
+        return { allocationLists, runningAverages, adjustedYearlyReturnsList };
     }
+
 
 
     // Constants
