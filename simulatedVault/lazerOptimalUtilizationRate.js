@@ -104,8 +104,12 @@ formatApiRequest = (data, protocolName, assetName) => {
 }
 
 timestampToDate = (timestamp) => {
-  const date = new Date(timestamp.split('T')[0])
-  return date
+    if (!timestamp || timestamp === 0) {
+        return null; // or return a default value, such as a specific date
+    }
+
+    const date = new Date(timestamp.split('T')[0])
+    return date
 }
 
 isSameDay = (timestamp1, timestamp2) => {
@@ -188,76 +192,85 @@ function findObjectByTimestamp(obj, timestamp) {
   gasFile = require('./gasDataEth.json')
   ethToUsdFile = require('./ethToUsd.json')
 
-  // format data into only categories we require
-  protocol1 = formatApiRequest(protocol1File.data, 'aave', 'usdc') // todo change to accept pools
-  protocol2 = formatApiRequest(protocol2File.data, 'compound', 'usdc')
+    // format data into only categories we require
+    protocol1 = formatApiRequest(protocol1File.data, 'aave', 'usdc') // todo change to accept pools
+    protocol2 = formatApiRequest(protocol2File.data, 'compound', 'usdc')
     protocol3 = formatApiRequest(protocol3File.data, 'euler', 'usdc')
 
   // console.log(protocol1)
   // console.log(protocol2)
 
-  // borrow APY
-  const supplyAPYs = {}
+    const protocols = [protocol1, protocol2, protocol3]
+    // Create an object to store the supply APYs for each key date
+    const supplyAPYs = {};
 
-  // formatting for unbalanced lists from defillama
-  for (let i = 0, j = 0; i < protocol1.length, j < protocol2.length; i++, j++) {
-    // skip empty fields
-    if (!protocol1[i]) {
-      // console.log('empty data')
-      continue
+// Iterate over the protocols
+    for (let i = 0; i < protocols.length; i++) {
+        const currentProtocol = protocols[i];
+
+        // Iterate over each entry in the current protocol
+        for (let j = 0; j < currentProtocol.length; j++) {
+            const entry = currentProtocol[j];
+
+            // Skip if entry is empty
+            if (!entry) {
+                console.log('Empty data for protocol', i + 1);
+                continue;
+            }
+
+            const { timestamp } = entry;
+
+            // Check if timestamp exists in all protocols
+            const isMatchingTimestamp = protocols.every((protocol) =>
+                protocol.find(
+                    (entry) =>
+                        entry && entry.timestamp && entry.timestamp.split('T')[0] === timestamp.split('T')[0]
+                )
+            );
+
+
+            if (!isMatchingTimestamp) {
+                console.log('No matching timestamp for entry:', entry);
+                continue;
+            }
+
+            // Convert the timestamp to a key date
+            const keyDate = timestampToDate(timestamp);
+
+            // Create a new entry in supplyAPYs for the key date if it doesn't exist
+            if (!supplyAPYs[keyDate]) {
+                supplyAPYs[keyDate] = {};
+            }
+
+            const protocolEntry = {
+                timestamp: entry.timestamp,
+                apyBase: entry.apyBase,
+                utilisationRate: entry.utilisationRate,
+                totalBorrowUsd: entry.totalBorrowUsd,
+                totalSupplyUsd: entry.totalSupplyUsd,
+                protocolName: entry.protocolName,
+                assetName: entry.assetName,
+                gasUsed: 0, // Placeholder value, update as needed
+                ethToUsd: 0, // Placeholder value, update as needed
+            };
+
+            // Enrich with gas values
+            const gas = findObjectByTimestamp(gasFile, entry.timestamp);
+            const ethToUsd = findObjectByTimestamp(ethToUsdFile, entry.timestamp);
+
+            protocolEntry.gasUsed = gas ? gas['Value (Wei)'] / 10e18 : 0; // Conversion to wei, or 0 if gas data is not available
+            protocolEntry.ethToUsd = ethToUsd ? ethToUsd.open : 0; // Eth to USD conversion, or 0 if ETH to USD data is not available
+
+            // Assign the protocol entry to the supplyAPYs object
+            supplyAPYs[keyDate]['protocol' + (i + 1)] = protocolEntry;
+        }
     }
-    if (!protocol2[i]) {
-      console.log('empty data')
-      continue
-    }
 
-    // checks if the days match
-    // todo pointers
-    const { sameDay } = isSameDay(
-      protocol1[i].timestamp,
-      protocol2[j].timestamp
-    )
-
-    // set the key with the respective timestamp, in this case the highest, as it may lag
-    const date1 = this.timestampToDate(protocol1[i].timestamp)
-    const date2 = this.timestampToDate(protocol2[j].timestamp)
-
-    let keyDate
-    if (date1.getDate() >= date2.getDate())
-      keyDate = timestampToDate(protocol1[i].timestamp)
-    else if (date2.getDate() <= date1.getDate())
-      keyDate = timestampToDate(protocol2[j].timestamp)
-
-    if (!sameDay) {
-      if (date1.getDate() >= date2.getDate()) {
-        i--
-      }
-      if (date1.getDate() <= date2.getDate()) {
-        j--
-      }
-    } else if (sameDay) {
-      supplyAPYs[keyDate] = {}
-      supplyAPYs[keyDate].protocol1 = protocol1[i]
-      supplyAPYs[keyDate].protocol2 = protocol2[i]
-      // enrich with gas values
-      // for protocol1
-      // supplyAPYs[keyDate].protocol1.gas =
-      const gas = findObjectByTimestamp(gasFile, protocol1[i].timestamp)
-      const ethToUsd = findObjectByTimestamp(
-        ethToUsdFile,
-        protocol1[i].timestamp
-      )
-      supplyAPYs[keyDate].protocol1.gasUsed = gas['Value (Wei)'] / 10e18 // conversion to wei
-      supplyAPYs[keyDate].protocol2.gasUsed = gas['Value (Wei)'] / 10e18 // convertsion to eth
-      supplyAPYs[keyDate].protocol1.ethToUsd = ethToUsd.open
-      supplyAPYs[keyDate].protocol2.ethToUsd = ethToUsd.open
-    } else console.log('we missed one!')
-  }
+// Print the result
+    console.log(supplyAPYs);
 
   // console.log(Object.keys(supplyAPYs).length)
 
-    // Function to calculate the weighted average APY, allocation list, running average, and adjusted yearly returns list
-    // Function to calculate the weighted average APY, allocation list, and running average
     // Function to calculate the weighted average APY, allocation list, and running average
     function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability) {
         let allocationLists = {};
@@ -350,13 +363,6 @@ function findObjectByTimestamp(obj, timestamp) {
 
   // todo vignesh
   // add more deferential possibilities for different periods. Daily, weekly, monthly.
-
-
-
-
-
-
-
     function calculateWeightedAverageAPYAndAllocation2(supplyAPYs, capitalAvailability) {
         let allocationListProtocol1 = [];
         let allocationListProtocol2 = [];
