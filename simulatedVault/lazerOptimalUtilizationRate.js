@@ -269,6 +269,9 @@ function findObjectByTimestamp(obj, timestamp) {
   // console.log(Object.keys(supplyAPYs).length)
 
     // Function to calculate the weighted average APY, allocation list, and running average
+    // Function to calculate the weighted average APY, allocation list, and running average
+    // Function to calculate the weighted average APY, allocation list, and running average
+    // Function to calculate the weighted average APY, allocation list, and running average
     function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability) {
         let allocationLists = {};
         let runningAverages = {};
@@ -282,6 +285,9 @@ function findObjectByTimestamp(obj, timestamp) {
             let totalWeightedAverageAPY = 0;
             let totalAllocatedCapital = 0;
 
+            const protocolsWithPositiveReturns = [];
+
+            // Starting point
             for (const protocol in supplyAPYs[date]) {
                 const apyBase = supplyAPYs[date][protocol].apyBase;
                 const totalSupplyUsd = supplyAPYs[date][protocol].totalSupplyUsd;
@@ -310,6 +316,10 @@ function findObjectByTimestamp(obj, timestamp) {
                 // Update the total weighted average APY and allocated capital
                 totalWeightedAverageAPY += weightedAverageAPY;
                 totalAllocatedCapital += allocatedCapital;
+
+                if (adjustedYearlyReturns >= 0) {
+                    protocolsWithPositiveReturns.push(protocol);
+                }
             }
 
             // Calculate the running average for each protocol
@@ -320,11 +330,20 @@ function findObjectByTimestamp(obj, timestamp) {
 
             // Add adjusted yearly returns to the list
             adjustedYearlyReturnsList[date] = allocationLists[date];
+
+            // Rollback allocations if adjusted yearly returns are not higher than apyBase
+            const rollbackAllocationRatio = totalWeightedAverageAPY > 0 ? totalAllocatedCapital / totalWeightedAverageAPY : 0;
+            for (const protocol of protocolsWithPositiveReturns) {
+                allocationLists[date][protocol].allocatedCapital *= rollbackAllocationRatio;
+            }
         }
 
         // Return the allocation lists, running averages, and adjusted yearly returns list
         return { allocationLists, runningAverages, adjustedYearlyReturnsList };
     }
+
+
+
 
 
 
@@ -457,3 +476,9 @@ function findObjectByTimestamp(obj, timestamp) {
 
 // on page redeems limit is 160k
 // https://etherscan.io/txs?a=0x39AA39c021dfbaE8faC545936693aC917d5E7563&p=300
+
+
+
+// what are other strategies:
+// arrakis, somelier finance, gamma finance
+
