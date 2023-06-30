@@ -258,7 +258,7 @@ function findObjectByTimestamp(obj, timestamp) {
             const gas = findObjectByTimestamp(gasFile, entry.timestamp);
             const ethToUsd = findObjectByTimestamp(ethToUsdFile, entry.timestamp);
 
-            protocolEntry.gasUsed = gas ? gas['Value (Wei)'] / 10e18 : 0; // Conversion to wei, or 0 if gas data is not available
+            protocolEntry.gasUsed = gas ? gas['Value (Wei)'] : 0; // Conversion to wei, or 0 if gas data is not available
             protocolEntry.ethToUsd = ethToUsd ? ethToUsd.open : 0; // Eth to USD conversion, or 0 if ETH to USD data is not available
 
             // Assign the protocol entry to the supplyAPYs object
@@ -285,20 +285,23 @@ function findObjectByTimestamp(obj, timestamp) {
             for (const protocol in supplyAPYs[date]) {
                 const apyBase = supplyAPYs[date][protocol].apyBase;
                 const totalSupplyUsd = supplyAPYs[date][protocol].totalSupplyUsd;
+                const totalBorrowUsd = supplyAPYs[date][protocol].totalBorrowUsd;
                 const gasUsed = supplyAPYs[date][protocol].gasUsed;
                 const ethToUsd = supplyAPYs[date][protocol].ethToUsd;
 
                 // Calculate the allocation ratio for the protocol
-                const allocationRatio = (apyBase * totalSupplyUsd) / Object.values(supplyAPYs[date]).reduce((sum, p) => sum + (p.apyBase * p.totalSupplyUsd), 0);
+                const allocationRatio = (apyBase * totalSupplyUsd) /
+                    Object.values(supplyAPYs[date]).reduce((sum, p) => sum + (p.apyBase * p.totalSupplyUsd), 0);
 
                 // Calculate the allocated capital for the protocol
                 const allocatedCapital = allocationRatio * capitalAvailability;
 
-                // Calculate the adjusted yearly returns by subtracting the gas cost for the protocol
-                const adjustedYearlyReturns = (apyBase - (gasUsed * ethToUsd)) * allocationRatio;
+                // Adjust the APY based on the allocated capital and utilization rate
+                const utilisationRate = totalBorrowUsd / (totalSupplyUsd + allocatedCapital);
+                const adjustedAPY = apyBase * (1 - utilisationRate);
 
                 // Calculate the weighted average APY
-                const weightedAverageAPY = adjustedYearlyReturns >= 0 ? adjustedYearlyReturns : apyBase;
+                const weightedAverageAPY = adjustedAPY >= 0 ? adjustedAPY : apyBase;
 
                 // Add allocation and APY to the allocation list
                 allocationLists[date][protocol] = {
@@ -322,14 +325,25 @@ function findObjectByTimestamp(obj, timestamp) {
             adjustedYearlyReturnsList[date] = allocationLists[date];
         }
 
-        // Return the allocation lists, running averages, and adjusted yearly returns list
-        return { allocationLists, runningAverages, adjustedYearlyReturnsList };
+        // Calculate the adjusted overall APY
+        let overallAPY = 0;
+        for (const date in allocationLists) {
+            for (const protocol in allocationLists[date]) {
+                const { weightedAverageAPY, allocatedCapital } = allocationLists[date][protocol];
+                overallAPY += weightedAverageAPY * allocatedCapital;
+            }
+        }
+        overallAPY /= capitalAvailability;
+
+        // Return the allocation lists, running averages, adjusted yearly returns list, and overall APY
+        return { allocationLists, runningAverages, adjustedYearlyReturnsList, overallAPY };
     }
 
 
 
+
     // Constants
-  const capitalAvailability = 2000000 // Capital availability towards the total supply
+  const capitalAvailability = 200000 // Capital availability towards the total supply
 
     // Call the function to get the allocation lists and running averages
     const result = calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability);
@@ -367,63 +381,46 @@ function findObjectByTimestamp(obj, timestamp) {
 
     finalAPY /= totalAllocatedCapital;
 
-    console.log(`Final APY: ${finalAPY}`);
+    console.log(`Final APY with Lazer's allocation: ${finalAPY}`);
 
   // todo vignesh
   // add more deferential possibilities for different periods. Daily, weekly, monthly.
-    function calculateWeightedAverageAPYAndAllocation2(supplyAPYs, capitalAvailability) {
-        let allocationListProtocol1 = [];
-        let allocationListProtocol2 = [];
-        let runningAverageProtocol1 = 0;
-        let runningAverageProtocol2 = 0;
-        let count = 0;
+    function calculateFinalAPYForProtocol(protocolName, allocationLists, runningAverages) {
+        let finalAPY = 0;
+        let totalAllocatedCapital = 0;
 
-        for (const date in supplyAPYs) {
-            const apyProtocol1 = supplyAPYs[date].protocol1.apyBase;
-            const apyProtocol2 = supplyAPYs[date].protocol2.apyBase;
-            const totalSupplyUsdProtocol1 = supplyAPYs[date].protocol1.totalSupplyUsd;
-            const totalSupplyUsdProtocol2 = supplyAPYs[date].protocol2.totalSupplyUsd;
+        // Loop through each date
+        for (const date in allocationLists) {
+            if (allocationLists[date].hasOwnProperty(protocolName)) {
+                const { allocatedCapital, apyBase } = allocationLists[date][protocolName];
+                const runningAverageAPY = runningAverages[date][protocolName];
 
-            // Allocate capital to protocols
-            const allocatedCapitalProtocol1 = (apyProtocol1 * totalSupplyUsdProtocol1) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2) * capitalAvailability;
-            const allocatedCapitalProtocol2 = (apyProtocol2 * totalSupplyUsdProtocol2) / (apyProtocol1 * totalSupplyUsdProtocol1 + apyProtocol2 * totalSupplyUsdProtocol2) * capitalAvailability;
+                // Calculate the contribution of the protocol to the final APY
+                const protocolAPYContribution = runningAverageAPY * allocatedCapital;
 
-            // Recalculate APYs based on allocated capital
-            const apyProtocol1Allocated = apyProtocol1 * totalSupplyUsdProtocol1 / (totalSupplyUsdProtocol1 + allocatedCapitalProtocol1);
-            const apyProtocol2Allocated = apyProtocol2 * totalSupplyUsdProtocol2 / (totalSupplyUsdProtocol2 + allocatedCapitalProtocol2);
-
-            // Calculate the weighted average APY
-            const weightedAverageAPYProtocol1 = (apyProtocol1Allocated * allocatedCapitalProtocol1) / capitalAvailability;
-            const weightedAverageAPYProtocol2 = (apyProtocol2Allocated * allocatedCapitalProtocol2) / capitalAvailability;
-
-            // Add allocation and APY to the lists
-            allocationListProtocol1.push({
-                date,
-                allocationProtocol1: allocatedCapitalProtocol1,
-                allocationProtocol2: allocatedCapitalProtocol2,
-                apyProtocol1: apyProtocol1Allocated,
-                apyProtocol2: apyProtocol2Allocated,
-            });
-
-            allocationListProtocol2.push({
-                date,
-                allocationProtocol1: 0,
-                allocationProtocol2: capitalAvailability,
-                apyProtocol1: 0,
-                apyProtocol2: apyProtocol2,
-            });
-
-            // Update the running averages
-            runningAverageProtocol1 = (runningAverageProtocol1 * count + weightedAverageAPYProtocol1) / (count + 1);
-            runningAverageProtocol2 = (runningAverageProtocol2 * count + weightedAverageAPYProtocol2) / (count + 1);
-            count++;
+                // Increment the final APY and total allocated capital
+                finalAPY += protocolAPYContribution;
+                totalAllocatedCapital += allocatedCapital;
+            }
         }
 
-        // Return the allocation lists and running averages
-        return { allocationListProtocol1, allocationListProtocol2, runningAverageProtocol1, runningAverageProtocol2 };
+        // Calculate the final APY for the protocol
+        const protocolFinalAPY = totalAllocatedCapital !== 0 ? finalAPY / totalAllocatedCapital : 0;
+
+        return protocolFinalAPY;
     }
-    result2 = calculateWeightedAverageAPYAndAllocation2(supplyAPYs, capitalAvailability);
-    console.log("Running Average (Protocol 2):", result2.runningAverageProtocol2);
+
+    protocolName = "protocol1";
+    finalAPY1 = calculateFinalAPYForProtocol(protocolName, result.allocationLists, result.runningAverages);
+    console.log(`Final APY for ${protocolName}: ${finalAPY1}`);
+
+    protocolName = "protocol2";
+    finalAPY2 = calculateFinalAPYForProtocol(protocolName, result.allocationLists, result.runningAverages);
+    console.log(`Final APY for ${protocolName}: ${finalAPY2}`);
+
+    protocolName = "protocol3";
+    finalAPY3 = calculateFinalAPYForProtocol(protocolName, result.allocationLists, result.runningAverages);
+    console.log(`Final APY for ${protocolName}: ${finalAPY3}`);
 
     console.log('------------')
 })()
