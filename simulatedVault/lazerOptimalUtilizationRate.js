@@ -269,29 +269,34 @@ function findObjectByTimestamp(obj, timestamp) {
   // console.log(Object.keys(supplyAPYs).length)
 
     // Function to calculate the weighted average APY, allocation list, and running average
-    function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability) {
+    function calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability, interval) {
         let allocationLists = {};
         let runningAverages = {};
         let adjustedYearlyReturnsList = {};
 
-        for (const date in supplyAPYs) {
-            allocationLists[date] = {};
-            runningAverages[date] = {};
-            adjustedYearlyReturnsList[date] = {};
+        const intervalInDays = interval * 7; // Convert interval to days
+
+        const dates = Object.keys(supplyAPYs); // Get all dates from supplyAPYs
+
+        for (let i = 0; i < dates.length; i++) {
+            const currentDate = dates[i];
+            allocationLists[currentDate] = {};
+            runningAverages[currentDate] = {};
+            adjustedYearlyReturnsList[currentDate] = {};
 
             let totalWeightedAverageAPY = 0;
             let totalAllocatedCapital = 0;
 
-            for (const protocol in supplyAPYs[date]) {
-                const apyBase = supplyAPYs[date][protocol].apyBase;
-                const totalSupplyUsd = supplyAPYs[date][protocol].totalSupplyUsd;
-                const totalBorrowUsd = supplyAPYs[date][protocol].totalBorrowUsd;
-                const gasUsed = supplyAPYs[date][protocol].gasUsed;
-                const ethToUsd = supplyAPYs[date][protocol].ethToUsd;
+            for (const protocol in supplyAPYs[currentDate]) {
+                const apyBase = supplyAPYs[currentDate][protocol].apyBase;
+                const totalSupplyUsd = supplyAPYs[currentDate][protocol].totalSupplyUsd;
+                const totalBorrowUsd = supplyAPYs[currentDate][protocol].totalBorrowUsd;
+                const gasUsed = supplyAPYs[currentDate][protocol].gasUsed;
+                const ethToUsd = supplyAPYs[currentDate][protocol].ethToUsd;
 
                 // Calculate the allocation ratio for the protocol
                 const allocationRatio = (apyBase * totalSupplyUsd) /
-                    Object.values(supplyAPYs[date]).reduce((sum, p) => sum + (p.apyBase * p.totalSupplyUsd), 0);
+                    Object.values(supplyAPYs[currentDate]).reduce((sum, p) => sum + (p.apyBase * p.totalSupplyUsd), 0);
 
                 // Calculate the allocated capital for the protocol
                 const allocatedCapital = allocationRatio * capitalAvailability;
@@ -304,10 +309,12 @@ function findObjectByTimestamp(obj, timestamp) {
                 const weightedAverageAPY = adjustedAPY >= 0 ? adjustedAPY : apyBase;
 
                 // Add allocation and APY to the allocation list
-                allocationLists[date][protocol] = {
+                allocationLists[currentDate][protocol] = {
                     allocatedCapital,
                     apyBase,
                     weightedAverageAPY,
+                    gasUsed,
+                    ethToUsd,
                 };
 
                 // Update the total weighted average APY and allocated capital
@@ -316,28 +323,66 @@ function findObjectByTimestamp(obj, timestamp) {
             }
 
             // Calculate the running average for each protocol
-            for (const protocol in supplyAPYs[date]) {
-                const { weightedAverageAPY } = allocationLists[date][protocol];
-                runningAverages[date][protocol] = weightedAverageAPY / totalWeightedAverageAPY;
+            for (const protocol in supplyAPYs[currentDate]) {
+                const { weightedAverageAPY } = allocationLists[currentDate][protocol];
+                runningAverages[currentDate][protocol] = weightedAverageAPY / totalWeightedAverageAPY;
             }
 
-            // Add adjusted yearly returns to the list
-            adjustedYearlyReturnsList[date] = allocationLists[date];
-        }
+            // Calculate the adjusted yearly returns based on the interval
+            if (i >= intervalInDays) {
+                const startDate = dates[i - intervalInDays + 1];
+                const endDate = dates[i];
 
-        // Calculate the adjusted overall APY
-        let overallAPY = 0;
-        for (const date in allocationLists) {
-            for (const protocol in allocationLists[date]) {
-                const { weightedAverageAPY, allocatedCapital } = allocationLists[date][protocol];
-                overallAPY += weightedAverageAPY * allocatedCapital;
+                for (const protocol in supplyAPYs[currentDate]) {
+                    let sumDailyAPYs = 0;
+                    let sumGasUsed = 0;
+                    for (let j = i - intervalInDays + 1; j <= i; j++) {
+                        const date = dates[j];
+                        sumDailyAPYs += allocationLists[date][protocol].weightedAverageAPY;
+                        sumGasUsed += allocationLists[date][protocol].gasUsed;
+                    }
+
+                    const averageGasUsed = sumGasUsed / intervalInDays;
+                    const averageDailyAPY = sumDailyAPYs / intervalInDays;
+                    const adjustedYearlyReturn = Math.pow(1 + averageDailyAPY, 365) - 1;
+
+                    adjustedYearlyReturnsList[currentDate][protocol] = {
+                        adjustedYearlyReturn,
+                        averageGasUsed,
+                    };
+                }
+            } else {
+                adjustedYearlyReturnsList[currentDate] = {};
+            }
+
+            // Calculate the overall APY with daily rebalancing
+            let overallAPY = 0;
+            let overallGasUsed = 0;
+            if (i >= intervalInDays) {
+                const startDate = dates[i - intervalInDays + 1];
+                const endDate = dates[i];
+
+                for (const protocol in allocationLists[currentDate]) {
+                    const { weightedAverageAPY, allocatedCapital, gasUsed } = allocationLists[currentDate][protocol];
+                    const dailyAPY = (1 + adjustedYearlyReturnsList[currentDate][protocol].adjustedYearlyReturn) ** (1 / 365) - 1;
+                    const dailyGasUsed = adjustedYearlyReturnsList[currentDate][protocol].averageGasUsed;
+                    overallAPY += dailyAPY * allocatedCapital;
+                    overallGasUsed += dailyGasUsed * allocatedCapital;
+                }
+            }
+
+            // Return the allocation lists, running averages, adjusted yearly returns list, overall APY, and overall gas used
+            if (i >= intervalInDays) {
+                return { allocationLists, runningAverages, adjustedYearlyReturnsList, overallAPY, overallGasUsed };
             }
         }
-        overallAPY /= capitalAvailability;
 
-        // Return the allocation lists, running averages, adjusted yearly returns list, and overall APY
-        return { allocationLists, runningAverages, adjustedYearlyReturnsList, overallAPY };
+        // If there are not enough data points for rebalancing, return empty results
+        return { allocationLists, runningAverages, adjustedYearlyReturnsList, overallAPY: 0, overallGasUsed: 0 };
     }
+
+
+
 
 
 
@@ -346,7 +391,7 @@ function findObjectByTimestamp(obj, timestamp) {
   const capitalAvailability = 200000 // Capital availability towards the total supply
 
     // Call the function to get the allocation lists and running averages
-    const result = calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability);
+    const result = calculateWeightedAverageAPYAndAllocation(supplyAPYs, capitalAvailability,14);
 
 // Output the allocation lists and running averages
     for (const date in result.allocationLists) {
